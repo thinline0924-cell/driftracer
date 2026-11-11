@@ -1,0 +1,8 @@
+{
+ "loops": [
+  {"name": "on_mid", "from": 13.00, "to": 14.90, "search": [150, 190], "hz": 170.0},
+  {"name": "on_high", "from": 8.97, "to": 9.50, "search": [190, 220], "hz": 206.0},
+  {"name": "off", "from": 16.15, "to": 16.62, "search": [145, 170], "hz": 157.5}
+ ],
+ "play": {"hzPerRpm": 0.034333, "on": ["on_mid", "on_high"], "fades": [[4700, 6000]], "off": "off", "offFrom": [1800, 3200], "minRate": {"on_mid": 0.5}}
+}

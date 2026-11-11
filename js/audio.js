@@ -1,16 +1,21 @@
-// Engine and tyre sound. The engine is built from loops cut out of a recording of a real
-// six-cylinder race car (assets/engine): each loop holds one constant firing frequency, and
-// they are pitch-shifted and cross-faded by rpm, with a separate loop for a closed throttle.
-// Until the loops have loaded (or if they fail to), a simple synthesised engine stands in.
+// Engine and tyre sound. Each car's engine is built from loops cut out of a recording of a
+// real engine (assets/engine/<car>): every loop holds one constant pitch, and they are
+// pitch-shifted and cross-faded by rpm, with a separate loop for a closed throttle. loops.json
+// says how the loops map onto the rev range. Until the loops have loaded (or if they fail to),
+// a simple synthesised engine stands in.
 
-const DIR = 'assets/engine/';
-// firing frequency heard at a given rpm. The recording's top loop (140 Hz) is placed at 4300 rpm.
-const HZ_PER_RPM = 140 / 4300;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ramp = (v, a, b) => clamp((v - a) / (b - a), 0, 1);
 
 export class Sound {
-  constructor() { this.ctx = null; this.muted = false; this.loops = null; this.load = 0; }
+  constructor() { this.ctx = null; this.muted = false; this.loops = null; this.load = 0; this.dir = null; this.token = 0; }
+
+  // choose which car's engine to play; takes effect at once if the sound is already running
+  setEngine(dir) {
+    if (dir === this.dir) return;
+    this.dir = dir;
+    if (this.ctx) this._loadLoops();
+  }
 
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
@@ -48,17 +53,25 @@ export class Sound {
   }
 
   async _loadLoops() {
+    const token = ++this.token, c = this.ctx, dir = this.dir;
+    // stop the previous car's loops
+    if (this.loops) for (const l of Object.values(this.loops.byName)) { l.gain.gain.setTargetAtTime(0, c.currentTime, 0.02); l.src.stop(c.currentTime + 0.2); }
+    this.loops = null;
+    if (!dir) return;
     try {
-      const c = this.ctx, list = await (await fetch(DIR + 'loops.json')).json(), loops = {};
-      await Promise.all(list.map(async l => {
-        const data = await (await fetch(DIR + l.file)).arrayBuffer();
+      const play = await (await fetch(dir + '/loops.json')).json(), byName = {};
+      await Promise.all(play.loops.map(async l => {
+        const data = await (await fetch(dir + '/' + l.file)).arrayBuffer();
         const buffer = await new Promise((res, rej) => c.decodeAudioData(data, res, rej));
-        const src = c.createBufferSource(); src.buffer = buffer; src.loop = true;
-        const gain = c.createGain(); gain.gain.value = 0;
-        src.connect(gain); gain.connect(this.engLp); src.start();
-        loops[l.name] = { src, gain, hz: l.hz };
+        byName[l.name] = { buffer, hz: l.hz, minRate: (play.minRate && play.minRate[l.name]) || 0.5 };
       }));
-      this.loops = loops;
+      if (token !== this.token) return;          // another car was chosen while this one was loading
+      for (const l of Object.values(byName)) {
+        l.src = c.createBufferSource(); l.src.buffer = l.buffer; l.src.loop = true;
+        l.gain = c.createGain(); l.gain.gain.value = 0;
+        l.src.connect(l.gain); l.gain.connect(this.engLp); l.src.start();
+      }
+      this.loops = { play, byName, on: play.on.map(n => byName[n]), off: byName[play.off] };
     } catch (e) { console.warn('engine loops unavailable, using the synthesised engine', e); }
   }
 
@@ -78,19 +91,21 @@ export class Sound {
     const L = this.load;
 
     if (this.loops) {
-      const f = rpm * HZ_PER_RPM, lp = this.loops;
-      const set = (l, g, minRate = 0.5) => {
+      const { play, on, off } = this.loops, f = rpm * play.hzPerRpm;
+      const set = (l, g) => {
         l.gain.gain.setTargetAtTime(g, t, 0.03);
-        l.src.playbackRate.setTargetAtTime(clamp(f / l.hz, minRate, 2.4), t, 0.03);
+        l.src.playbackRate.setTargetAtTime(clamp(f / l.hz, l.minRate, 2.4), t, 0.03);
       };
-      // equal-power cross-fades between the loops along the rev range
-      const a = ramp(rpm, 1500, 2600), b = ramp(rpm, 3500, 4300);
-      const wIdle = Math.cos(a * Math.PI / 2), wLow = Math.sin(a * Math.PI / 2) * Math.cos(b * Math.PI / 2), wHigh = Math.sin(b * Math.PI / 2);
-      const on = 0.3 + 0.7 * L;
-      set(lp.idle, wIdle * (0.75 + 0.25 * L), 0.78);
-      set(lp.on_low, wLow * on);
-      set(lp.on_high, wHigh * on);
-      set(lp.off, (1 - L) * a * 0.8);
+      // equal-power cross-fades from each loop to the next along the rev range
+      const onGain = 0.3 + 0.7 * L;
+      let carry = 1;
+      for (let i = 0; i < on.length; i++) {
+        const k = i < on.length - 1 ? ramp(rpm, play.fades[i][0], play.fades[i][1]) : 0;
+        const w = carry * Math.cos(k * Math.PI / 2);
+        set(on[i], w * (i === 0 && play.idleFirst ? 0.75 + 0.25 * L : onGain));
+        carry *= Math.sin(k * Math.PI / 2);
+      }
+      if (off) set(off, (1 - L) * ramp(rpm, play.offFrom[0], play.offFrom[1]) * 0.8);
       this.engLp.frequency.setTargetAtTime(700 + rpm * 0.45 + L * 5200, t, 0.05);
       const chop = limiter && (performance.now() / 30 | 0) % 2 ? 0.35 : 1;
       this.engBus.gain.setTargetAtTime(active ? 0.95 * chop * (0.8 + 0.2 * L) : 0, t, limiter ? 0.004 : 0.05);

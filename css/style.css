@@ -126,6 +126,8 @@ hr { border: 0; height: 1px; background: var(--rule); margin: 0; width: 100%; }
 .blk.ruled { padding-top: calc(20 * var(--px)); border-top: 1px solid var(--rule); }
 .pb { font-weight: 300; font-size: calc(48 * var(--px)); line-height: 1; letter-spacing: -0.02em; }
 .carname { font-size: calc(20 * var(--px)); font-weight: 500; letter-spacing: 0.06em; }
+.carbtn { background: transparent; border: 1px solid var(--dim); padding: calc(8 * var(--px)) calc(12 * var(--px)); text-align: left; display: flex; justify-content: space-between; align-items: center; gap: calc(12 * var(--px)); }
+.carbtn::after { content: '切替'; font-size: calc(11 * var(--px)); letter-spacing: 0.14em; color: var(--dim); font-weight: 500; }
 
 #result .body { gap: calc(72 * var(--px)); }
 #result .main { width: calc(600 * var(--px)); display: flex; flex-direction: column; gap: calc(22 * var(--px)); }

@@ -58,6 +58,21 @@ export const SUPRA = {
   engineBrake: 110,    // Nm at redline, closed throttle
 };
 
+SUPRA.revScale = 8000;   // full scale of the rev counter
+
+// RE Amemiya RX-7 (GT300): lighter, less torque, slick tyres and real wings, and a rotary that revs to 9000
+export const RX7 = {
+  ...SUPRA,
+  mass: 1150, yawInertia: 1750, a: 1.2, b: 1.225, trackF: 1.6, trackR: 1.6, cgHeight: 0.4, wheelRadius: 0.342,
+  muFront: 1.66, muRear: 1.72, downforce: 2.6,
+  brakeForceF: 6800, brakeTorqueR: 1000, handbrakeTorque: 4500,
+  wheelInertia: 2.3, engineInertia: 0.09,
+  gears: [3.1, 2.15, 1.62, 1.3, 1.08, 0.92], final: 4.44,
+  idle: 1500, redline: 9000, shiftUp: 8700, shiftDown: 4600, revScale: 10000,
+  torque: [[1500, 150], [3000, 215], [4500, 255], [6000, 285], [7500, 280], [8500, 262], [9000, 240], [9400, 170]],
+  engineBrake: 60,
+};
+
 function torqueAt(curve, rpm) {
   if (rpm <= curve[0][0]) return curve[0][1];
   for (let i = 1; i < curve.length; i++) {
@@ -71,15 +86,19 @@ function torqueAt(curve, rpm) {
 
 export class Car {
   constructor(spec = SUPRA) {
+    this.setSpec(spec);
+    this.assist = 0.92;
+    this.tcAid = 1;      // 0 = off, 1 = full wheelspin trimming  // how strongly the front wheels self-align with the direction of travel
+    this.reset(0, 0, 0);
+  }
+
+  setSpec(spec) {
     this.p = spec;
     // body-frame wheel positions: [left, forward], order FL FR RL RR
     this.wheelPos = [
       [spec.trackF / 2, spec.a], [-spec.trackF / 2, spec.a],
       [spec.trackR / 2, -spec.b], [-spec.trackR / 2, -spec.b],
     ];
-    this.assist = 0.92;
-    this.tcAid = 1;      // 0 = off, 1 = full wheelspin trimming  // how strongly the front wheels self-align with the direction of travel
-    this.reset(0, 0, 0);
   }
 
   reset(x, z, psi) {

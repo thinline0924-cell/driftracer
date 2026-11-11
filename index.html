@@ -59,7 +59,7 @@
         <div class="big"><span class="lbl">GEAR</span><span class="num gear" data-b="gear">1</span></div>
       </div>
       <div class="rev"><u></u><i data-bar="rev"></i></div>
-      <div class="scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+      <div class="scale" id="rev-scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
       <div class="pair"><span class="lbl">RPM ×1000</span><span class="num sm" data-b="rpm">0</span></div>
     </div>
     <div class="right">
@@ -142,7 +142,7 @@
       </div>
       <div class="blk ruled">
         <div class="lbl">CAR</div>
-        <div class="carname">GR SUPRA DRIFT</div>
+        <button id="opt-car" class="carname carbtn" aria-label="車を切り替える">GR SUPRA DRIFT</button>
         <div class="kv"><span class="k">駆動方式</span><span>FR</span><span class="k">変速</span><span>オート</span><span class="k">カウンター補助</span><button id="opt-assist" class="opt">弱</button></div>
       </div>
       <div class="grow"></div>

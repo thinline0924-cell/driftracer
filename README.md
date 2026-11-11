@@ -32,7 +32,8 @@ python3 -m http.server 8000
 - `js/timing.js` — ラップとセクターの計測、自己ベスト
 - `js/main.js` — 読み込み、描画、カメラ、画面の切り替え
 - `js/hud.js` `js/input.js` `js/fx.js` `js/audio.js` — 表示、入力、スモークとタイヤ痕、音
-- `assets/engine/` — 実車の録音から作ったエンジン音のループ
+- `assets/engine/<車>/` — 実車の録音から作ったエンジン音のループと、回転数への割り当て(`loops.json`)
+- `assets/driftpark/` — ドリフトコースのモデルと、そこから作ったデータ
 - `assets/ahvenisto/` — コースのモデルと、そこから作った高さ・路面データ
 - `assets/lider/` — カートコースのモデルと、そこから作った高さ・路面・走行範囲のデータ
 - `tools/` — コースのデータを元のモデルから作り直すスクリプト
@@ -42,16 +43,27 @@ python3 -m http.server 8000
 
 ## 素材のクレジット
 
-- コース: "Ahvenisto Race Circuit rallycross track" by Timo Korkalainen — CC BY 4.0
+コース
+- Ahvenisto: "Ahvenisto Race Circuit rallycross track" by Timo Korkalainen — CC BY 4.0
   https://sketchfab.com/3d-models/ahvenisto-race-circuit-rallycross-track-20f5d0c0c1e24f4fbea45270f333988c
   (ポリゴン数の削減と圧縮を行っています)
-- コース: "Karting Club Lider (Outdoor Race Track)" by skril4ek — CC BY-NC 4.0(非営利のみ)
-  (車の大きさに合わせて実寸の約 1.5 倍に拡大し、ポリゴン数の削減と圧縮を行っています)
-- 車: "2019 Toyota GR Supra Drift by HKS" by SIU Car Garage — CC BY-NC 4.0(非営利のみ)
+- Lider Karting: "Karting Club Lider (Outdoor Race Track)" by skril4ek — CC BY-NC 4.0(非営利のみ)
+  (ポリゴン数の削減と圧縮を行い、ゲーム内で約 1.5 倍に拡大して表示しています)
+- Drift Park: "Drift Race Track Free" by Nicholas-3D — CC BY-ND 4.0(改変したものの再配布は不可)
+  (形式の変換と圧縮だけを行い、形状には手を加えていません。約 1.5 倍の拡大はゲーム内の表示で行っています)
+
+車
+- GR Supra: "2019 Toyota GR Supra Drift by HKS" by SIU Car Garage — CC BY-NC 4.0(非営利のみ)
   https://sketchfab.com/3d-models/2019-toyota-gr-supra-drift-by-hks-121f2bc836244f2cb107c15a68d01c54
-- エンジン音: "6 cyl vintageracecar tostartline burnout startclimb" by ears68(Freesound 185151)
+- RX-7: "2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab — CC BY 4.0
+
+エンジン音(聴き取れる区間を切り出し、回転数が一定になるよう補正してループ素材にしています。`tools/build_engine_loops.py`)
+- GR Supra: "6 cyl vintageracecar tostartline burnout startclimb" by ears68(Freesound 185151)
   https://freesound.org/people/ears68/sounds/185151/
-  (聴き取れる区間を切り出し、回転数が一定になるよう補正してループ素材にしています。`tools/build_engine_loops.py`)
+- RX-7: "rotary engine" by fuser10(Freesound 100791)
+  https://freesound.org/people/fuser10/sounds/100791/
+
+その他
 - three.js — MIT License(`lib/three/LICENSE`)
 
-車とカートコースのモデルが非営利ライセンスのため、このゲームを広告や販売を伴う形で公開することはできません。
+非営利ライセンスの素材を含むため、このゲームを広告や販売を伴う形で公開することはできません。

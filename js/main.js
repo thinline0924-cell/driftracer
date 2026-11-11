@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { Track } from './track.js';
-import { Car } from './car.js';
+import { Car, SUPRA, RX7 } from './car.js';
 import { Input } from './input.js';
 import { Timing, fmtLap, fmtDelta } from './timing.js';
 import { Hud } from './hud.js';
@@ -12,9 +12,16 @@ import { Sound } from './audio.js';
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
-const COURSES = ['assets/ahvenisto', 'assets/lider'];
-const CAR_CREDIT = '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0';
-const SOUND_CREDIT = 'Engine: "6 cyl vintage racecar" by ears68 (Freesound 185151)';
+const COURSES = ['assets/ahvenisto', 'assets/lider', 'assets/driftpark'];
+// lamp: brake-lamp position in metres (left, up, forward); lens / cutout: material name patterns
+const CARS = [
+  { id: 'supra', name: 'GR SUPRA DRIFT', spec: SUPRA, file: 'assets/car_supra.glb', engine: 'assets/engine/supra',
+    scale: 1, yaw: 0, lift: 0, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /lighglass/i, lamp: [0.525, 0.71, -2.06],
+    credit: '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0 / Engine: "6 cyl vintage racecar" by ears68 (Freesound 185151)' },
+  { id: 'rx7', name: 'RX-7 GT300', spec: RX7, file: 'assets/car_rx7.glb', engine: 'assets/engine/rx7',
+    scale: 0.2675, yaw: Math.PI / 2, lift: 0.022, wheels: ['rx7_fl_1', 'rx7_fr_2', 'rx7_rl_4', 'rx7_rr_3'], body: 'rx7_body_0', cutout: /^Rim/, lamp: [0.5, 0.74, -2.12],
+    credit: '"2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab, CC BY 4.0 / Engine: "rotary engine" by fuser10 (Freesound 100791)' },
+];
 const ASSISTS = [['弱', 0.92, 1], ['強', 1.0, 1], ['オフ', 0, 0]];   // label, countersteer follow, wheelspin aid
 const PHYS_DT = 1 / 120;
 const WALL_MARGIN = 0.95;   // half the car's width: the limits are measured to the barrier face
@@ -29,7 +36,7 @@ const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 4000);
 
 const input = new Input(), hud = new Hud(), sound = new Sound(), car = new Car();
 let tracks = [], timings = [], sel = 0, loaded = -1, courseGroup = null, plain = null, busy = false;
-let track, timing, smoke, skids, carRoot, bodyNode, wheels = [], shadow, lampMat, lampGlow = [], lampLevel = 0;
+let track, timing, smoke, skids, carRoot, vis = null, carIdx = 0, lampLevel = 0;
 let state = 'loading', camMode = 0, camYaw = 0, hint = -1, acc = 0, last = 0, wallFlash = 0;
 let assistIdx = +(localStorage.getItem('slipangle.assist') || 0) % ASSISTS.length;
 const loc = {}, pose = { y: 0, pitch: 0, roll: 0, ready: false };
@@ -80,6 +87,8 @@ function placeTrackModel(gltf) {
     if (!o.isMesh) return;
     o.matrixAutoUpdate = false; o.frustumCulled = false;
     if (o.material.map) { o.material.map.anisotropy = aniso; o.material.map.needsUpdate = true; }
+    // surfaces modelled exactly level with the road (open ground) are pushed back so they do not flicker through it
+    if (track.meta.sink && track.meta.sink.includes(o.material.name)) { o.material.polygonOffset = true; o.material.polygonOffsetFactor = 2; o.material.polygonOffsetUnits = 4; }
   });
   root.updateMatrixWorld(true);
   courseGroup.add(root);
@@ -118,16 +127,21 @@ function buildTrackProps() {
   line.frustumCulled = false; courseGroup.add(line);
 }
 
-function buildCar(gltf) {
-  carRoot = new THREE.Group(); carRoot.rotation.order = 'YXZ';
-  carRoot.add(gltf.scene); scene.add(carRoot);
+// one visual per car: the model wrapped so that it faces +Z at real size, with a pivot at each
+// wheel centre (steer + spin) and one under the body (lean on the springs)
+function buildCar(cfg, gltf) {
+  const root = new THREE.Group();
+  const holder = new THREE.Group(); holder.add(gltf.scene);
+  holder.scale.setScalar(cfg.scale); holder.rotation.y = cfg.yaw; holder.position.y = cfg.lift;
+  root.add(holder); root.updateMatrixWorld(true);
   const by = n => gltf.scene.getObjectByName(n);
-  bodyNode = by('BODY');
-  const baseL = new THREE.Matrix4().extractRotation(by('RL').matrix), baseR = new THREE.Matrix4().extractRotation(by('RR').matrix);
-  wheels = ['FL', 'FR', 'RL', 'RR'].map((n, i) => {
-    const node = by(n); node.matrixAutoUpdate = false;
-    return { node, c: new THREE.Vector3().setFromMatrixPosition(node.matrix), base: i % 2 ? baseR : baseL };
+  const box = new THREE.Box3();
+  const wheels = cfg.wheels.map(n => {
+    const node = by(n), pivot = new THREE.Group(); pivot.rotation.order = 'YXZ';
+    box.setFromObject(node).getCenter(pivot.position);
+    root.add(pivot); pivot.attach(node); return pivot;
   });
+  const body = new THREE.Group(); root.add(body); body.attach(by(cfg.body));
   gltf.scene.traverse(o => {
     if (!o.isMesh) return;
     o.frustumCulled = false;
@@ -136,12 +150,15 @@ function buildCar(gltf) {
       // the model's glass uses transmission, which costs a second scene pass; plain blending reads the same here
       m.transmission = 0; m.transparent = true; m.depthWrite = false; m.roughness = 0.08; m.metalness = 0;
       m.opacity = /ligh/i.test(m.name) ? 0.3 : 0.62; m.color.set(0x0c0f12);
+    } else if (cfg.cutout && cfg.cutout.test(m.name)) {
+      // spoked rims drawn with an alpha texture: cut out instead of blended, so they sort correctly
+      m.transparent = false; m.alphaTest = 0.5; m.depthWrite = true;
     }
   });
-  // brake lamps: the rear half of the lamp-lens mesh gets its own material so it can light up,
-  // plus a soft glow in front of each lens so it reads from the chase camera in daylight
-  let lens = null;
-  gltf.scene.traverse(o => { if (o.isMesh && /lighglass/i.test(o.material.name)) lens = o; });
+  // brake lamps: where the model has a lamp-lens mesh, its rear half gets its own material so it can
+  // light up; every car also gets a soft glow at each lamp so it reads from the chase camera in daylight
+  let lampMat = null, lens = null;
+  if (cfg.lens) body.traverse(o => { if (o.isMesh && cfg.lens.test(o.material.name)) lens = o; });
   if (lens && lens.geometry.index) {
     const g = lens.geometry, pos = g.attributes.position, idx = g.index.array, front = [], rear = [];
     for (let t = 0; t < idx.length; t += 3) {
@@ -154,26 +171,60 @@ function buildCar(gltf) {
     const rm = new THREE.Mesh(rg, lampMat); rm.frustumCulled = false;
     rm.position.copy(lens.position); rm.quaternion.copy(lens.quaternion); rm.scale.copy(lens.scale);
     lens.parent.add(rm);
-    const gc = document.createElement('canvas'); gc.width = 128; gc.height = 64;
-    const gg = gc.getContext('2d'), rad = gg.createRadialGradient(64, 32, 2, 64, 32, 64);
-    rad.addColorStop(0, 'rgba(255,120,90,1)'); rad.addColorStop(0.25, 'rgba(255,30,10,0.75)'); rad.addColorStop(1, 'rgba(255,0,0,0)');
-    gg.setTransform(1, 0, 0, 0.5, 0, 16); gg.fillStyle = rad; gg.fillRect(0, -32, 128, 128);
-    const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
-    lampGlow = [0.525, -0.525].map(x => {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
-      sp.position.set(x, 0.71, -2.06); sp.scale.set(0.78, 0.34, 1); sp.renderOrder = 6; carRoot.add(sp); return sp;
-    });
   }
+  const gc = document.createElement('canvas'); gc.width = 128; gc.height = 64;
+  const gg = gc.getContext('2d'), rad = gg.createRadialGradient(64, 32, 2, 64, 32, 64);
+  rad.addColorStop(0, 'rgba(255,120,90,1)'); rad.addColorStop(0.25, 'rgba(255,30,10,0.75)'); rad.addColorStop(1, 'rgba(255,0,0,0)');
+  gg.setTransform(1, 0, 0, 0.5, 0, 16); gg.fillStyle = rad; gg.fillRect(0, -32, 128, 128);
+  const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
+  const [gx, gy, gz] = cfg.lamp;
+  const glow = [gx, -gx].map(x => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
+    sp.position.set(x, gy, gz); sp.scale.set(0.78, 0.34, 1); sp.renderOrder = 6; body.add(sp); return sp;
+  });
   // soft contact shadow
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 8, 64, 64, 64);
   gr.addColorStop(0, 'rgba(0,0,0,0.62)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-  shadow = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 5.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.04; shadow.renderOrder = 1; carRoot.add(shadow);
+  const size = box.setFromObject(holder).getSize(new THREE.Vector3());
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(size.x + 0.85, size.z + 1.4), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.04; shadow.renderOrder = 1; root.add(shadow);
+  root.visible = false; carRoot.add(root);
+  return { root, wheels, body, lampMat, glow };
 }
 
-const mT = new THREE.Matrix4(), mR = new THREE.Matrix4(), mS = new THREE.Matrix4();
+// switch to a car: physics, visual, engine sound, records and the HUD's rev counter
+async function setCar(i) {
+  if (busy) return;
+  busy = true;
+  carIdx = (i + CARS.length) % CARS.length; const cfg = CARS[carIdx];
+  try {
+    if (!cfg.vis) {
+      $('loading').hidden = false; setLoad(0.1, 'LOADING ' + cfg.name);
+      cfg.vis = buildCar(cfg, await loadGLB(gltfLoader, cfg.file, f => setLoad(0.1 + 0.85 * f)));
+      $('loading').hidden = true;
+    }
+    for (const c of CARS) if (c.vis) c.vis.root.visible = c === cfg;
+    vis = cfg.vis;
+    car.setSpec(cfg.spec); sound.setEngine(cfg.engine); hud.setCar(cfg.name, cfg.spec);
+    localStorage.setItem('slipangle.car', cfg.id);
+    if (tracks.length) {
+      timings = tracks.map(t => {
+        const tm = new Timing(t, cfg.id);
+        tm.onLap = lap => {
+          const d = lap.prev ? lap.time - lap.prev.time : null;
+          hud.banner(fmtLap(lap.time) + (d == null ? '' : '  ' + fmtDelta(d)), d == null ? 'gain' : d < 0 ? 'gain' : 'loss');
+        };
+        return tm;
+      });
+      timing = timings[sel];
+      if (state === 'select') pick(sel);
+    }
+  } catch (e) { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; }
+  busy = false;
+}
+
 function poseCar(dt) {
   // ground under each wheel gives the car's height and attitude
   const sp = Math.sin(car.psi), cp = Math.cos(car.psi);
@@ -192,19 +243,11 @@ function poseCar(dt) {
   carRoot.position.set(car.x, pose.y, car.z);
   carRoot.rotation.set(-pose.pitch, car.psi, pose.roll);
   // body leans on its springs
-  bodyNode.rotation.set(clamp(-car.axF * 0.0045, -0.05, 0.05), 0, clamp(car.ayF * 0.006, -0.075, 0.075));
-  if (lampMat) {
-    lampLevel += ((car.brake > 0.04 ? 1 : 0) - lampLevel) * Math.min(1, dt * 30 + (dt === 0 ? 1 : 0));
-    lampMat.emissiveIntensity = lampLevel * 5; lampMat.opacity = 0.3 + 0.65 * lampLevel;
-    for (const sp of lampGlow) sp.material.opacity = lampLevel * 0.6;
-  }
-  for (let i = 0; i < 4; i++) {
-    const w = wheels[i];
-    mT.makeTranslation(w.c.x, w.c.y, w.c.z);
-    mR.makeRotationY(i < 2 ? car.steer : 0); mS.makeRotationX(car.spin[i < 2 ? 0 : 1]);
-    w.node.matrix.copy(mT).multiply(mR).multiply(mS).multiply(w.base);
-    w.node.matrixWorldNeedsUpdate = true;
-  }
+  vis.body.rotation.set(clamp(-car.axF * 0.0045, -0.05, 0.05), 0, clamp(car.ayF * 0.006, -0.075, 0.075));
+  lampLevel += ((car.brake > 0.04 ? 1 : 0) - lampLevel) * Math.min(1, dt * 30 + (dt === 0 ? 1 : 0));
+  if (vis.lampMat) { vis.lampMat.emissiveIntensity = lampLevel * 5; vis.lampMat.opacity = 0.3 + 0.65 * lampLevel; }
+  for (const sp of vis.glow) sp.material.opacity = lampLevel * (vis.lampMat ? 0.6 : 0.95);
+  for (let i = 0; i < 4; i++) vis.wheels[i].rotation.set(car.spin[i < 2 ? 0 : 1], i < 2 ? car.steer : 0, 0);
 }
 
 function sampleGround() {
@@ -338,7 +381,7 @@ function show(next) {
 function pick(i) {
   sel = (i + tracks.length) % tracks.length; localStorage.setItem('slipangle.course', String(sel)); track = tracks[sel]; timing = timings[sel];
   hud.buildMap(track);
-  hud.select(tracks, sel, timing.best, `${track.meta.credit} / ${CAR_CREDIT} / ${SOUND_CREDIT}`, pick);
+  hud.select(tracks, sel, timing.best, `${track.meta.credit} / ${CARS[carIdx].credit}`, pick);
 }
 function openSelect() { pick(sel); show('select'); }
 
@@ -396,6 +439,7 @@ $('btn-resume').addEventListener('click', resume);
 $('btn-courses').addEventListener('click', openSelect);
 $('btn-pause').addEventListener('click', openResult);
 $('opt-assist').addEventListener('click', () => setAssist((assistIdx + 1) % ASSISTS.length));
+$('opt-car').addEventListener('click', () => setCar(carIdx + 1));
 addEventListener('resize', resize);
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'drive') openResult(); });
 
@@ -404,29 +448,18 @@ const gltfLoader = new GLTFLoader(); gltfLoader.setMeshoptDecoder(MeshoptDecoder
 async function boot() {
   resize();
   setLoad(0.05, 'LOADING');
-  let carFrac = 0;
-  const carP = loadGLB(gltfLoader, 'assets/car_supra.glb', f => { carFrac = f; setLoad(0.3 + 0.6 * f); });
-  tracks = await Promise.all(COURSES.map(d => Track.load(d)));
-  timings = tracks.map(t => {
-    const tm = new Timing(t);
-    tm.onLap = lap => {
-      const d = lap.prev ? lap.time - lap.prev.time : null;
-      hud.banner(fmtLap(lap.time) + (d == null ? '' : '  ' + fmtDelta(d)), d == null ? 'gain' : d < 0 ? 'gain' : 'loss');
-    };
-    return tm;
-  });
-  sel = Math.min(tracks.length - 1, +(localStorage.getItem('slipangle.course') || 0));
-  track = tracks[sel]; timing = timings[sel];
-  setLoad(0.3, 'LOADING');
-  const carG = await carP;
-  setLoad(0.97, 'PREPARING');
-  buildWorld(); buildCar(carG);
+  buildWorld();
+  carRoot = new THREE.Group(); carRoot.rotation.order = 'YXZ'; scene.add(carRoot);
   smoke = new Smoke(scene); skids = [new Skid(scene), new Skid(scene)];
+  tracks = await Promise.all(COURSES.map(d => Track.load(d)));
+  sel = Math.min(tracks.length - 1, +(localStorage.getItem('slipangle.course') || 0));
+  track = tracks[sel];
+  await setCar(Math.max(0, CARS.findIndex(c => c.id === localStorage.getItem('slipangle.car'))));
   setAssist(assistIdx);
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, input, sound, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick };
+  window.__game = { car, input, sound, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });

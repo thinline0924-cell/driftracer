@@ -1,7 +1,8 @@
 // Lap and sector timing against the track centre line, personal bests in localStorage,
 // and per-lap statistics for the result screen.
 
-const KEY = id => `slipangle.v1.${id}`;
+// records are kept per course and per car (the first car keeps the original key)
+const KEY = (id, car) => `slipangle.v1.${id}` + (car && car !== 'supra' ? '.' + car : '');
 const TRACE_STEP = 4;   // metres between samples of the time / speed traces
 
 export function fmtLap(t) {
@@ -13,10 +14,10 @@ export const fmtSec = t => (t == null || !isFinite(t) ? '--.---' : t.toFixed(3))
 export const fmtDelta = d => (d == null || !isFinite(d) ? '-.---' : (d < 0 ? '−' : '+') + Math.abs(d).toFixed(3));
 
 export class Timing {
-  constructor(track) {
-    this.track = track;
+  constructor(track, carId) {
+    this.track = track; this.carId = carId;
     this.slots = Math.ceil(track.n / TRACE_STEP);
-    try { this.best = JSON.parse(localStorage.getItem(KEY(track.meta.id))); } catch { this.best = null; }
+    try { this.best = JSON.parse(localStorage.getItem(KEY(track.meta.id, carId))); } catch { this.best = null; }
     if (this.best && (!this.best.times || this.best.times.length !== this.slots)) this.best = null;
     this.last = null;
     this.onLap = () => {};
@@ -88,7 +89,7 @@ export class Timing {
       const times = this.times.slice(); let lastT = 0;
       for (let i = 0; i < times.length; i++) { if (times[i] == null) times[i] = lastT; lastT = times[i]; }
       this.best = { time, sectors, times: times.map(v => +v.toFixed(3)), speeds: this.speeds.map(v => Math.round(v)) };
-      try { localStorage.setItem(KEY(this.track.meta.id), JSON.stringify(this.best)); } catch { /* storage unavailable */ }
+      try { localStorage.setItem(KEY(this.track.meta.id, this.carId), JSON.stringify(this.best)); } catch { /* storage unavailable */ }
     }
     this.onLap(this.last);
   }

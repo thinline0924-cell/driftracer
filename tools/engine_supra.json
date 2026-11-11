@@ -1,0 +1,71 @@
+{
+ "loops": [
+  {
+   "name": "idle",
+   "from": 22.5,
+   "to": 24.4,
+   "search": [
+    45,
+    68
+   ],
+   "hz": 55.0
+  },
+  {
+   "name": "on_low",
+   "from": 56.08,
+   "to": 56.95,
+   "search": [
+    95,
+    140
+   ],
+   "hz": 115.0
+  },
+  {
+   "name": "on_high",
+   "from": 52.42,
+   "to": 53.62,
+   "search": [
+    120,
+    160
+   ],
+   "hz": 140.0
+  },
+  {
+   "name": "off",
+   "from": 53.82,
+   "to": 54.82,
+   "search": [
+    92,
+    125
+   ],
+   "hz": 108.0
+  }
+ ],
+ "play": {
+  "hzPerRpm": 0.032558,
+  "on": [
+   "idle",
+   "on_low",
+   "on_high"
+  ],
+  "fades": [
+   [
+    1500,
+    2600
+   ],
+   [
+    3500,
+    4300
+   ]
+  ],
+  "off": "off",
+  "offFrom": [
+   1500,
+   2600
+  ],
+  "minRate": {
+   "idle": 0.78
+  },
+  "idleFirst": true
+ }
+}

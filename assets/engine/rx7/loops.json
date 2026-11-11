@@ -1,0 +1,1 @@
+{"hzPerRpm": 0.034333, "on": ["on_mid", "on_high"], "fades": [[4700, 6000]], "off": "off", "offFrom": [1800, 3200], "minRate": {"on_mid": 0.5}, "loops": [{"name": "on_mid", "file": "on_mid.wav", "hz": 170.0}, {"name": "on_high", "file": "on_high.wav", "hz": 206.0}, {"name": "off", "file": "off.wav", "hz": 157.5}]}

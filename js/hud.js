@@ -101,7 +101,7 @@ export class Hud {
     this.set('speed', String(Math.round(kmh)));
     this.set('gear', car.gear < 0 ? 'R' : String(car.gear));
     this.set('rpm', String(Math.round(car.rpm / 10) * 10));
-    this.fill('rev', car.rpm / 8000);
+    this.fill('rev', car.rpm / car.p.revScale);
     const lim = car.rpm > car.p.redline - 150;
     for (const el of this.revs) el.classList.toggle('lim', lim);
 
@@ -115,6 +115,15 @@ export class Hud {
 
     if (this.dot) { const [x, y] = this.mapXY(car.x, car.z); this.dot.setAttribute('cx', x.toFixed(1)); this.dot.setAttribute('cy', y.toFixed(1)); }
     if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) for (const el of this.text.banner) el.classList.remove('on'); }
+  }
+
+  // rev counter scale, red zone and names for the chosen car
+  setCar(name, spec) {
+    this.carName = name;
+    for (const el of document.querySelectorAll('.rev u')) el.style.width = ((1 - spec.redline / spec.revScale) * 100).toFixed(1) + '%';
+    const sc = document.getElementById('rev-scale');
+    if (sc) sc.innerHTML = Array.from({ length: spec.revScale / 1000 + 1 }, (_, i) => `<span>${i}</span>`).join('');
+    const b = document.getElementById('opt-car'); if (b) b.textContent = name;
   }
 
   select(tracks, sel, best, credit, onPick) {
@@ -139,7 +148,7 @@ export class Hud {
   }
 
   result(track, last, lapNo) {
-    this.set('resHead', `${track.meta.name} · GR SUPRA DRIFT` + (last ? ` · LAP ${String(last.lapNo).padStart(2, '0')}` : ''));
+    this.set('resHead', `${track.meta.name} · ${this.carName}` + (last ? ` · LAP ${String(last.lapNo).padStart(2, '0')}` : ''));
     const flag = this.text.resFlag[0];
     if (!last) {
       flag.className = 'flag'; flag.textContent = 'ラップ未完了 — スタートラインを通過して1周すると記録されます';
