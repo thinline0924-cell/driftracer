@@ -26,7 +26,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 4000);
 
 const input = new Input(), hud = new Hud(), sound = new Sound(), car = new Car();
-let track, timing, smoke, skids, carRoot, bodyNode, wheels = [], shadow;
+let track, timing, smoke, skids, carRoot, bodyNode, wheels = [], shadow, lampMat, lampGlow = [], lampLevel = 0;
 let state = 'loading', camMode = 0, camYaw = 0, hint = -1, acc = 0, last = 0, wallFlash = 0;
 let assistIdx = +(localStorage.getItem('slipangle.assist') || 0) % ASSISTS.length;
 const loc = {}, pose = { y: 0, pitch: 0, roll: 0, ready: false };
@@ -135,6 +135,32 @@ function buildCar(gltf) {
       m.opacity = /ligh/i.test(m.name) ? 0.3 : 0.62; m.color.set(0x0c0f12);
     }
   });
+  // brake lamps: the rear half of the lamp-lens mesh gets its own material so it can light up,
+  // plus a soft glow in front of each lens so it reads from the chase camera in daylight
+  let lens = null;
+  gltf.scene.traverse(o => { if (o.isMesh && /lighglass/i.test(o.material.name)) lens = o; });
+  if (lens && lens.geometry.index) {
+    const g = lens.geometry, pos = g.attributes.position, idx = g.index.array, front = [], rear = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const z = pos.getZ(idx[t]) + pos.getZ(idx[t + 1]) + pos.getZ(idx[t + 2]);
+      (z < 0 ? rear : front).push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    const fg = g.clone(); fg.setIndex(front); const rg = g.clone(); rg.setIndex(rear);
+    lens.geometry = fg;
+    lampMat = lens.material.clone(); lampMat.emissive.set(0xff1806); lampMat.emissiveIntensity = 0; lampMat.color.set(0x2a0503);
+    const rm = new THREE.Mesh(rg, lampMat); rm.frustumCulled = false;
+    rm.position.copy(lens.position); rm.quaternion.copy(lens.quaternion); rm.scale.copy(lens.scale);
+    lens.parent.add(rm);
+    const gc = document.createElement('canvas'); gc.width = 128; gc.height = 64;
+    const gg = gc.getContext('2d'), rad = gg.createRadialGradient(64, 32, 2, 64, 32, 64);
+    rad.addColorStop(0, 'rgba(255,120,90,1)'); rad.addColorStop(0.25, 'rgba(255,30,10,0.75)'); rad.addColorStop(1, 'rgba(255,0,0,0)');
+    gg.setTransform(1, 0, 0, 0.5, 0, 16); gg.fillStyle = rad; gg.fillRect(0, -32, 128, 128);
+    const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
+    lampGlow = [0.525, -0.525].map(x => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
+      sp.position.set(x, 0.71, -2.06); sp.scale.set(0.78, 0.34, 1); sp.renderOrder = 6; carRoot.add(sp); return sp;
+    });
+  }
   // soft contact shadow
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 8, 64, 64, 64);
@@ -164,6 +190,11 @@ function poseCar(dt) {
   carRoot.rotation.set(-pose.pitch, car.psi, pose.roll);
   // body leans on its springs
   bodyNode.rotation.set(clamp(-car.axF * 0.0045, -0.05, 0.05), 0, clamp(car.ayF * 0.006, -0.075, 0.075));
+  if (lampMat) {
+    lampLevel += ((car.brake > 0.04 ? 1 : 0) - lampLevel) * Math.min(1, dt * 30 + (dt === 0 ? 1 : 0));
+    lampMat.emissiveIntensity = lampLevel * 5; lampMat.opacity = 0.3 + 0.65 * lampLevel;
+    for (const sp of lampGlow) sp.material.opacity = lampLevel * 0.6;
+  }
   for (let i = 0; i < 4; i++) {
     const w = wheels[i];
     mT.makeTranslation(w.c.x, w.c.y, w.c.z);

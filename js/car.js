@@ -17,13 +17,13 @@ export const SUPRA = {
   trackR: 1.72,
   cgHeight: 0.46,
   wheelRadius: 0.333,
-  rollFront: 0.6,     // share of lateral load transfer carried by the front axle
-  muFront: 1.27,
-  muRear: 1.3,
+  rollFront: 0.57,     // share of lateral load transfer carried by the front axle
+  muFront: 1.5,
+  muRear: 1.54,
   muOffroad: 0.62,
   loadSens: 0.14,      // grip falls as a tyre is loaded beyond its static load
-  peakSlipAngleF: 0.13, // tan(alpha) at peak lateral force
-  peakSlipAngleR: 0.15,
+  peakSlipAngleF: 0.12, // tan(alpha) at peak lateral force
+  peakSlipAngleR: 0.13,
   peakSlipRatio: 0.11,
   tyreB: 3.08,         // tyre curve: peak 1.0 at normalised slip 1, ~0.92 when fully sliding
   tyreC: 1.25,
@@ -121,7 +121,7 @@ export class Car {
     const speed = this.speed;
     const fade = clamp((speed - 2) / 6, 0, 1);
     const free = Math.atan2(this.v + this.r * p.a, Math.max(Math.abs(this.u), 2));
-    const range = 0.15 + 0.46 * Math.exp(-speed / 13);
+    const range = 0.145 + 0.47 * Math.exp(-speed / 7.5);
     // the part of the slide the wheels do not follow keeps a little front bite (it is what sustains a drift)
     const ab = Math.abs(this.beta);
     const deep = clamp(1 - (ab - 0.6) / 0.3, 0, 1);              // fades out past ~35-50 deg of slide
@@ -226,7 +226,7 @@ export class Car {
       // wheelspin aid: trims torque as the rear slip ratio runs away, the way a driver feathers the throttle
       // and lifts when the slide gets deeper than the steering lock can catch
       const tc = this.tcAid > 0
-        ? clamp(1 - this.tcAid * (this.slipRatioR - 0.35) / 0.6, 0.12, 1) * clamp(1 - this.tcAid * (Math.abs(this.beta) - 0.72) / 0.3, 0.2, 1)
+        ? clamp(1 - this.tcAid * (this.slipRatioR - 0.22) / 0.4, 0.12, 1) * clamp(1 - this.tcAid * (Math.abs(this.beta) - 0.5) / 0.3, 0.25, 1)
         : 1;
       const te = this.throttle * torqueAt(p.torque, rpm) * cut * tc - (1 - this.throttle * cut) * p.engineBrake * rpm / p.redline;
       drive = te * ratio * p.efficiency;
