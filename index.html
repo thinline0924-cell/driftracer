@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0B0C">
+<title>SLIP ANGLE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"./lib/three/three.module.min.js","three/addons/":"./lib/three/addons/"}}</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<!-- driving HUD, desktop -->
+<div id="hud" class="hud hud-pc" hidden>
+  <div class="row top">
+    <div class="timing">
+      <div class="lbl"><span data-b="lapNo">LAP 01</span> · CURRENT</div>
+      <div class="num lap" data-b="lap">0:00.000</div>
+      <hr>
+      <div class="sectors">
+        <span class="k">S1</span><span data-b="s1">--.---</span><span class="d" data-b="d1">-.---</span>
+        <span class="k">S2</span><span data-b="s2">--.---</span><span class="d" data-b="d2">-.---</span>
+        <span class="k">S3</span><span data-b="s3">--.---</span><span class="d" data-b="d3">-.---</span>
+      </div>
+      <hr>
+      <div class="pair"><span class="lbl">BEST</span><span class="num sm" data-b="best">-:--.---</span></div>
+    </div>
+    <div class="delta">
+      <div class="lbl">DELTA TO BEST</div>
+      <div class="num delta-num" data-b="delta">-.---</div>
+      <div class="track"><i data-bar="delta"></i><b></b></div>
+      <div class="scale"><span>−1.0</span><span>0</span><span>+1.0</span></div>
+      <div class="banner" data-b="banner"></div>
+    </div>
+    <div class="map">
+      <svg id="minimap" viewBox="0 0 200 130" role="img" aria-label="コース図と現在位置"></svg>
+      <div class="lbl"><span data-b="course">—</span> · SECTOR <span data-b="sector">1</span></div>
+    </div>
+  </div>
+  <div class="row bottom">
+    <div class="drift">
+      <div class="lbl">DRIFT ANGLE</div>
+      <div class="big"><span class="num drift-num" data-b="drift">0</span><span class="num unit">° <span data-b="driftDir">–</span></span></div>
+      <div class="track"><i class="acc" data-bar="drift"></i><b></b></div>
+      <div class="pair"><span class="lbl">STEER</span><span class="num xs" data-b="steer">0°</span></div>
+      <div class="track thin"><i data-bar="steer"></i><b></b></div>
+      <div class="gwrap">
+        <div class="gball"><i></i><b></b><span data-dot="g"></span></div>
+        <div class="gnum"><span class="k">LAT</span><span data-b="gLat">+0.00 G</span><span class="k">LON</span><span data-b="gLon">+0.00 G</span></div>
+      </div>
+    </div>
+    <div class="centre">
+      <div class="speedrow">
+        <div class="big"><span class="num speed" data-b="speed">0</span><span class="lbl md">KM/H</span></div>
+        <div class="big"><span class="lbl">GEAR</span><span class="num gear" data-b="gear">1</span></div>
+      </div>
+      <div class="rev"><u></u><i data-bar="rev"></i></div>
+      <div class="scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+      <div class="pair"><span class="lbl">RPM ×1000</span><span class="num sm" data-b="rpm">0</span></div>
+    </div>
+    <div class="right">
+      <div class="tyres">
+        <div class="lbl">TYRE LOAD / SLIP</div>
+        <div class="tgrid">
+          <div class="ty"><div class="vbar"><i data-v="l0"></i></div><div><div class="lbl">FL</div><div class="num sm" data-b="t0">0.00</div></div></div>
+          <div class="ty"><div class="vbar"><i data-v="l1"></i></div><div><div class="lbl">FR</div><div class="num sm" data-b="t1">0.00</div></div></div>
+          <div class="ty"><div class="vbar"><i data-v="l2"></i></div><div><div class="lbl">RL</div><div class="num sm" data-b="t2">0.00</div></div></div>
+          <div class="ty"><div class="vbar"><i data-v="l3"></i></div><div><div class="lbl">RR</div><div class="num sm" data-b="t3">0.00</div></div></div>
+        </div>
+      </div>
+      <div class="inputs">
+        <div class="in"><div class="vbar tall"><i data-v="thr"></i></div><div class="lbl">THR</div></div>
+        <div class="in"><div class="vbar tall"><i class="acc" data-v="brk"></i></div><div class="lbl">BRK</div></div>
+        <div class="in"><div class="vbar tall"><i class="acc" data-v="hb"></i></div><div class="lbl">HB</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="keys">R リセット · C 視点 · M 音 · ESC 結果</div>
+</div>
+
+<!-- driving HUD, phone landscape -->
+<div id="hudm" class="hud hud-m" hidden>
+  <div class="row top">
+    <div class="timing">
+      <div class="lbl" data-b="lapNo">LAP 01</div>
+      <div class="num lap" data-b="lap">0:00.000</div>
+      <div class="num sm delta-num" data-b="delta">-.---</div>
+    </div>
+    <div class="delta">
+      <div class="lbl">DRIFT ANGLE</div>
+      <div class="big"><span class="num drift-num" data-b="drift">0</span><span class="num unit">° <span data-b="driftDir">–</span></span></div>
+      <div class="track"><i class="acc" data-bar="drift"></i><b></b></div>
+      <div class="banner" data-b="banner"></div>
+    </div>
+    <div class="right">
+      <div class="spd">
+        <div class="big"><span class="num speed" data-b="speed">0</span><span class="lbl">KM/H</span></div>
+        <div class="rev"><u></u><i data-bar="rev"></i></div>
+      </div>
+      <div class="num gear" data-b="gear">1</div>
+      <button class="icon" id="btn-pause" aria-label="一時停止"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2V12M10 2V12" stroke="currentColor" stroke-width="2" fill="none"/></svg></button>
+    </div>
+  </div>
+  <div class="row bottom">
+    <div class="steerpad" id="pad-steer">
+      <div class="lbl">STEER — 左右にスライド</div>
+      <div class="slot"><i></i><span id="knob"></span></div>
+    </div>
+    <div class="pedals">
+      <button id="pad-hb" class="pd side">SIDE</button>
+      <button id="pad-brk" class="pd brake">BRAKE</button>
+      <button id="pad-gas" class="pd gas">GAS</button>
+    </div>
+  </div>
+</div>
+
+<!-- course select -->
+<section id="select" class="screen" hidden>
+  <header><div class="mark">SLIP ANGLE</div><div class="lbl">TIME ATTACK · コース選択</div></header>
+  <div class="body">
+    <div class="list">
+      <div class="lbl">COURSE</div>
+      <div id="course-list"></div>
+    </div>
+    <div class="mapcol">
+      <div class="mapbox"><svg id="selmap" viewBox="0 0 200 130" role="img" aria-label="コース図"></svg></div>
+      <div class="facts">
+        <div><div class="lbl">LENGTH</div><div class="num md" data-b="selLength">—</div></div>
+        <div><div class="lbl">ELEVATION</div><div class="num md" data-b="selElev">—</div></div>
+        <div><div class="lbl">SECTORS</div><div class="num md">3</div></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="blk">
+        <div class="lbl">PERSONAL BEST</div>
+        <div class="num pb" data-b="selBest">-:--.---</div>
+        <div class="kv mono"><span class="k">S1</span><span data-b="selS1">--.---</span><span class="k">S2</span><span data-b="selS2">--.---</span><span class="k">S3</span><span data-b="selS3">--.---</span></div>
+      </div>
+      <div class="blk ruled">
+        <div class="lbl">CAR</div>
+        <div class="carname">GR SUPRA DRIFT</div>
+        <div class="kv"><span class="k">駆動方式</span><span>FR</span><span class="k">変速</span><span>オート</span><span class="k">カウンター補助</span><button id="opt-assist" class="opt">弱</button></div>
+      </div>
+      <div class="grow"></div>
+      <button id="btn-start" class="cta">START</button>
+    </div>
+  </div>
+  <footer class="hints"><span class="pc">ENTER スタート</span><span class="pc">← → ステア · ↑ アクセル · ↓ ブレーキ · SPACE サイドブレーキ</span><span id="credit"></span></footer>
+</section>
+
+<!-- result -->
+<section id="result" class="screen" hidden>
+  <header><div class="mark">SLIP ANGLE</div><div class="lbl" data-b="resHead">—</div></header>
+  <div class="body">
+    <div class="main">
+      <div class="flag" data-b="resFlag"></div>
+      <div class="num hero" data-b="resLap">-:--.---</div>
+      <div class="sub"><span class="num md" data-b="resDelta"></span><span class="note" data-b="resPrev"></span></div>
+      <div class="stable">
+        <span class="lbl">SECTOR</span><span class="lbl r">THIS LAP</span><span class="lbl r">PREV BEST</span><span class="lbl r">DELTA</span>
+        <span class="k">S1</span><span class="r" data-b="rs1"></span><span class="r k" data-b="rp1"></span><span class="r" data-b="rd1"></span>
+        <span class="k">S2</span><span class="r" data-b="rs2"></span><span class="r k" data-b="rp2"></span><span class="r" data-b="rd2"></span>
+        <span class="k">S3</span><span class="r" data-b="rs3"></span><span class="r k" data-b="rp3"></span><span class="r" data-b="rd3"></span>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="sgrid">
+        <div><div class="lbl">MAX SPEED</div><div class="num lg"><span data-b="stSpeed">—</span> <small>km/h</small></div></div>
+        <div><div class="lbl">MAX DRIFT ANGLE</div><div class="num lg acc"><span data-b="stMaxAng">—</span>°</div></div>
+        <div><div class="lbl">AVG DRIFT ANGLE</div><div class="num lg"><span data-b="stAvgAng">—</span>°</div></div>
+        <div><div class="lbl">DRIFT DISTANCE</div><div class="num lg"><span data-b="stDist">—</span> <small>m</small></div></div>
+        <div><div class="lbl">MAX LATERAL G</div><div class="num lg"><span data-b="stG">—</span> <small>G</small></div></div>
+        <div><div class="lbl">WALL CONTACT</div><div class="num lg" data-b="stWall">—</div></div>
+      </div>
+      <div class="trace">
+        <div class="thead"><div class="lbl">SPEED TRACE · km/h</div><div class="legend"><span><i class="l1"></i>今回</span><span><i class="l2"></i>これまでのベスト</span></div></div>
+        <svg id="trace" viewBox="0 0 640 170" preserveAspectRatio="none" role="img" aria-label="速度の推移"></svg>
+        <div class="tsec" id="tsec"><span>S1</span><span>S2</span><span>S3</span></div>
+      </div>
+      <div class="btns">
+        <button id="btn-retry" class="cta">RETRY</button>
+        <button id="btn-resume" class="ghost">走行に戻る</button>
+        <button id="btn-courses" class="ghost">コース選択へ</button>
+      </div>
+    </div>
+  </div>
+  <footer class="hints"><span class="pc">R もう一度走る</span><span class="pc">ESC 走行に戻る</span></footer>
+</section>
+
+<div id="loading"><div class="mark">SLIP ANGLE</div><div class="lbl" id="load-msg">LOADING</div><div class="track"><i id="load-bar"></i></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
