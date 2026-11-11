@@ -18,15 +18,17 @@ export const SUPRA = {
   cgHeight: 0.46,
   wheelRadius: 0.333,
   rollFront: 0.57,     // share of lateral load transfer carried by the front axle
-  muFront: 1.5,
-  muRear: 1.54,
+  muFront: 1.56,
+  muRear: 1.62,
   muOffroad: 0.62,
   loadSens: 0.14,      // grip falls as a tyre is loaded beyond its static load
-  peakSlipAngleF: 0.12, // tan(alpha) at peak lateral force
-  peakSlipAngleR: 0.13,
+  peakSlipAngleF: 0.105, // tan(alpha) at peak lateral force
+  peakSlipAngleR: 0.115,
   peakSlipRatio: 0.11,
   tyreB: 3.08,         // tyre curve: peak 1.0 at normalised slip 1, ~0.92 when fully sliding
   tyreC: 1.25,
+  powerPush: 0.07,     // front grip given up on a wide-open throttle mid-corner: the line runs wide until you ease off
+  downforce: 1.5,      // lift coefficient x area (m2), 45% on the front axle
   liftOver: 0.12,      // rear grip given up (and a third of it gained at the front) when off the throttle mid-corner
   absLateral: 0.8,     // share of front tyre capacity kept for cornering while braking
   v0: 3.0,             // slip denominators are floored at this speed (m/s)
@@ -122,7 +124,7 @@ export class Car {
     const speed = this.speed;
     const fade = clamp((speed - 2) / 6, 0, 1);
     const free = Math.atan2(this.v + this.r * p.a, Math.max(Math.abs(this.u), 2));
-    const range = 0.145 + 0.47 * Math.exp(-speed / 7.5);
+    const range = 0.125 + 0.49 * Math.exp(-speed / 7.5);
     // the part of the slide the wheels do not follow keeps a little front bite (it is what sustains a drift)
     const ab = Math.abs(this.beta);
     const deep = clamp(1 - (ab - 0.6) / 0.3, 0, 1);              // fades out past ~35-50 deg of slide
@@ -181,7 +183,8 @@ export class Car {
     // wheel loads
     const w = p.mass * G;
     const dLong = p.mass * this.axF * p.cgHeight / L;
-    const front = w * p.b / L - dLong, rear = w * p.a / L + dLong;
+    const aero = 0.6 * p.downforce * this.speed * this.speed;      // 0.5 * air density * ClA * v2
+    const front = w * p.b / L - dLong + aero * 0.45, rear = w * p.a / L + dLong + aero * 0.55;
     const dLat = p.mass * this.ayF * p.cgHeight;
     const dF = dLat * p.rollFront / p.trackF, dR = dLat * (1 - p.rollFront) / p.trackR;
     const fz = this.load;
@@ -190,7 +193,10 @@ export class Car {
     const fz0F = w * p.b / L / 2, fz0R = w * p.a / L / 2;
 
     // lift-off: coming off the throttle while cornering loosens the rear and sharpens the front
-    const lift = p.liftOver * (1 - clamp(this.throttle / 0.3, 0, 1)) * (1 - this.brake) * clamp(Math.abs(this.ayF) / 8, 0, 1) * clamp((this.speed - 6) / 8, 0, 1)
+    // throttle steers the car: the balance moves with the pedal around a neutral point near half throttle
+    const corner = (1 - this.brake) * clamp(Math.abs(this.ayF) / 8, 0, 1) * clamp((this.speed - 6) / 8, 0, 1);
+    const push = p.powerPush * clamp((this.throttle - 0.55) / 0.45, 0, 1) * corner;
+    const lift = p.liftOver * (1 - clamp(this.throttle / 0.45, 0, 1)) * corner
       * clamp(1 - Math.abs(this.beta) / 0.32, 0, 1);     // fades as the tail comes round, so it settles at a small angle
 
     let Ff = 0, Fl = 0, Mz = 0;
@@ -202,7 +208,7 @@ export class Car {
       const vwf = u - r * lx, vwl = v + r * lz;
       const vl = vwf * cd + vwl * sd, vs = -vwf * sd + vwl * cd;
       const grip = this.surface[i];
-      const mu = (p.muOffroad + (p.muFront - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0F - 1)) * (1 + lift / 3);
+      const mu = (p.muOffroad + (p.muFront - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0F - 1)) * (1 + lift / 3 - push);
       const cap = mu * fz[i];
       const sy = vs / Math.max(Math.abs(vl), p.v0) / p.peakSlipAngleF;
       // ABS: cornering force is served first (up to a share of the tyre's capacity), and braking
@@ -231,7 +237,7 @@ export class Car {
       // wheelspin aid: trims torque as the rear slip ratio runs away, the way a driver feathers the throttle
       // and lifts when the slide gets deeper than the steering lock can catch
       const tc = this.tcAid > 0
-        ? clamp(1 - this.tcAid * (this.slipRatioR - 0.22) / 0.4, 0.12, 1) * clamp(1 - this.tcAid * (Math.abs(this.beta) - 0.5) / 0.3, 0.25, 1)
+        ? clamp(1 - this.tcAid * (this.slipRatioR - 0.16) / 0.3, 0.12, 1) * clamp(1 - this.tcAid * (Math.abs(this.beta) - 0.38) / 0.3, 0.25, 1)
         : 1;
       const te = this.throttle * torqueAt(p.torque, rpm) * cut * tc - (1 - this.throttle * cut) * p.engineBrake * rpm / p.redline;
       drive = te * ratio * p.efficiency;
