@@ -18,15 +18,16 @@ export const SUPRA = {
   cgHeight: 0.46,
   wheelRadius: 0.333,
   rollFront: 0.6,     // share of lateral load transfer carried by the front axle
-  muFront: 1.18,
-  muRear: 1.2,
+  muFront: 1.27,
+  muRear: 1.3,
   muOffroad: 0.62,
   loadSens: 0.14,      // grip falls as a tyre is loaded beyond its static load
   peakSlipAngleF: 0.13, // tan(alpha) at peak lateral force
   peakSlipAngleR: 0.15,
   peakSlipRatio: 0.11,
-  tyreB: 2.32,         // tyre curve: peak 1.0 at normalised slip 1, ~0.85 when fully sliding
-  tyreC: 1.35,
+  tyreB: 3.08,         // tyre curve: peak 1.0 at normalised slip 1, ~0.92 when fully sliding
+  tyreC: 1.25,
+  absLateral: 0.8,     // share of front tyre capacity kept for cornering while braking
   v0: 3.0,             // slip denominators are floored at this speed (m/s)
   cdA: 0.72,
   rollRes: 0.014,
@@ -34,7 +35,7 @@ export const SUPRA = {
   maxSteer: 0.94,      // 54 deg lock (angle kit)
   steerRate: 6.0,      // rad/s at the wheels
   brakeForceF: 7800,   // N per front wheel at full pedal
-  brakeTorqueR: 1500,  // Nm on the rear axle at full pedal
+  brakeTorqueR: 1150,  // Nm on the rear axle at full pedal
   handbrakeTorque: 5200,
   wheelInertia: 2.6,   // rear axle + both wheels
   engineInertia: 0.13,
@@ -199,9 +200,11 @@ export class Car {
       const mu = (p.muOffroad + (p.muFront - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0F - 1));
       const cap = mu * fz[i];
       const sy = vs / Math.max(Math.abs(vl), p.v0) / p.peakSlipAngleF;
-      let fx = -p.brakeForceF * this.brake * clamp(vl / 0.5, -1, 1);
-      fx = clamp(fx, -cap, cap);
-      const fy = -cap * this._tyre(Math.abs(sy)) * Math.sign(sy) * Math.sqrt(Math.max(0, 1 - (fx / cap) ** 2));
+      // ABS: cornering force is served first (up to a share of the tyre's capacity), and braking
+      // takes what is left, so the car still turns with the pedal fully down
+      const fy = -Math.sign(sy) * cap * Math.min(this._tyre(Math.abs(sy)), this.brake > 0.01 ? p.absLateral : 1);
+      const room = Math.sqrt(Math.max(0, cap * cap - fy * fy));
+      const fx = clamp(-p.brakeForceF * this.brake * clamp(vl / 0.5, -1, 1), -room, room);
       this.slip[i] = Math.hypot(sy, fx / cap);
       const bf = fx * cd - fy * sd, bl = fx * sd + fy * cd;
       Ff += bf; Fl += bl; Mz += lz * bl - lx * bf;
