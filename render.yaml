@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: driftracer
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=3600

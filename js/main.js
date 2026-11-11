@@ -89,15 +89,15 @@ function buildTrackProps() {
     for (const side of [1, 2]) {
       if (!(track.flags[i] & side)) continue;
       const s = side === 1 ? 1 : -1, lim = (side === 1 ? track.limL[i] : track.limR[i]) + 0.35;
-      spots.push([track.px[i] + s * track.tz[i] * lim, track.pz[i] - s * track.tx[i] * lim, Math.atan2(track.tx[i], track.tz[i]), spots.length]);
+      spots.push([track.px[i] + s * track.tz[i] * lim, track.pz[i] - s * track.tx[i] * lim, Math.atan2(track.tx[i], track.tz[i]), i >> 1]);
     }
   }
-  const geo = new THREE.BoxGeometry(0.5, 0.62, 1.86);
+  const geo = new THREE.BoxGeometry(0.42, 0.56, 1.9);
   const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), spots.length);
   const d = new THREE.Object3D(), white = new THREE.Color(0xe6e3dc), red = new THREE.Color(0xc4391c);
   spots.forEach(([x, z, yaw, k], n) => {
     d.position.set(x, track.heightAt(x, z) + 0.3, z); d.rotation.set(0, yaw, 0); d.updateMatrix();
-    inst.setMatrixAt(n, d.matrix); inst.setColorAt(n, (k >> 1) % 2 ? white : red);
+    inst.setMatrixAt(n, d.matrix); inst.setColorAt(n, k % 2 ? white : red);
   });
   inst.instanceMatrix.needsUpdate = true; inst.frustumCulled = false; scene.add(inst);
 

@@ -212,7 +212,7 @@ hr { border: 0; height: 1px; background: var(--rule); margin: 0; width: 100%; }
   .pb { font-size: calc(32 * var(--px)); }
   #select .kv.mono { display: none; }
   .carname { font-size: calc(15 * var(--px)); }
-  .kv { grid-template-columns: calc(84 * var(--px)) 1fr; font-size: calc(12 * var(--px)); row-gap: calc(4 * var(--px)); }
+  .kv { grid-template-columns: calc(98 * var(--px)) 1fr; font-size: calc(12 * var(--px)); row-gap: calc(4 * var(--px)); }
   .opt { font-size: calc(12 * var(--px)); min-height: calc(30 * var(--px)); }
   #result .body { gap: calc(36 * var(--px)); }
   #result .main { width: calc(340 * var(--px)); gap: calc(10 * var(--px)); }
