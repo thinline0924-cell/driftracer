@@ -14,6 +14,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const COURSES = ['assets/ahvenisto', 'assets/lider'];
 const CAR_CREDIT = '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0';
+const SOUND_CREDIT = 'Engine: "6 cyl vintage racecar" by ears68 (Freesound 185151)';
 const ASSISTS = [['弱', 0.92, 1], ['強', 1.0, 1], ['オフ', 0, 0]];   // label, countersteer follow, wheelspin aid
 const PHYS_DT = 1 / 120;
 const WALL_MARGIN = 0.95;   // half the car's width: the limits are measured to the barrier face
@@ -323,7 +324,7 @@ function frame(now) {
   hud.drive(dt, car, timing, track, inp);
   const rearSlide = clamp((Math.max(car.slip[2], car.slip[3]) - 1.2) / 3, 0, 1), frontSlide = clamp((Math.max(car.slip[0], car.slip[1]) - 1.2) / 2, 0, 1);
   const off = 1 - (car.surface[0] + car.surface[1] + car.surface[2] + car.surface[3]) / 4;
-  sound.update(car.rpm, car.throttle, Math.max(rearSlide, frontSlide * 0.7), off, car.speed, true);
+  sound.update(car.rpm, car.throttle, Math.max(rearSlide, frontSlide * 0.7), off, car.speed, true, car.shiftT > 0, car.rpm > car.p.redline - 90 && car.throttle > 0.5);
   renderer.render(scene, camera);
 }
 
@@ -337,7 +338,7 @@ function show(next) {
 function pick(i) {
   sel = (i + tracks.length) % tracks.length; localStorage.setItem('slipangle.course', String(sel)); track = tracks[sel]; timing = timings[sel];
   hud.buildMap(track);
-  hud.select(tracks, sel, timing.best, `${track.meta.credit} / ${CAR_CREDIT}`, pick);
+  hud.select(tracks, sel, timing.best, `${track.meta.credit} / ${CAR_CREDIT} / ${SOUND_CREDIT}`, pick);
 }
 function openSelect() { pick(sel); show('select'); }
 
@@ -425,7 +426,7 @@ async function boot() {
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, input, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick };
+  window.__game = { car, input, sound, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });

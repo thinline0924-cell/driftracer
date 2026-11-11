@@ -1,0 +1,68 @@
+"""Cut constant-pitch engine loops out of a field recording.
+
+usage: python build_engine_loops.py <recording.wav> <out dir>
+Each entry below names a stretch of the recording where the engine is clearly audible. The
+engine's firing frequency is tracked through it, the stretch is resampled so that frequency
+becomes constant, the level is evened out, and the ends are cross-faded into a seamless loop.
+Needs numpy and scipy.
+"""
+import sys, os, json, numpy as np
+from scipy.io import wavfile
+from scipy import signal
+
+src, out = sys.argv[1], sys.argv[2]
+OUT_SR = 32000
+# name, start s, end s, pitch search range Hz, pitch the loop is flattened to Hz
+LOOPS = [
+    ('idle',    22.50, 24.40, 45, 68, 55.0),
+    ('on_low',  56.08, 56.95, 95, 140, 115.0),
+    ('on_high', 52.42, 53.62, 120, 160, 140.0),
+    ('off',     53.82, 54.82, 92, 125, 108.0),
+]
+sr, x = wavfile.read(src)
+x = x.astype(np.float64)
+if x.ndim > 1: x = x.mean(axis=1)
+x /= np.abs(x).max()
+hp = signal.butter(2, 35, btype='high', fs=sr, output='sos')
+bp = signal.butter(4, [40, 1200], btype='band', fs=sr, output='sos')
+meta = []
+for name, t0, t1, flo, fhi, ft in LOOPS:
+    pad = 0.15
+    a = int((t0 - pad) * sr); b = int((t1 + pad) * sr)
+    seg = signal.sosfiltfilt(hp, x[a:b]); y = signal.sosfiltfilt(bp, seg)
+    # firing frequency every 10 ms by autocorrelation
+    hop = int(sr * 0.01); win = int(sr * 0.1); f0 = []; ts = []
+    for i in range(0, len(y) - win, hop):
+        w = y[i:i + win] * np.hanning(win)
+        ac = np.correlate(w, w, mode='full')[win - 1:]; ac /= ac[0] + 1e-12
+        lo, hi = int(sr / fhi), int(sr / flo); k = lo + int(np.argmax(ac[lo:hi]))
+        # parabolic refinement of the peak
+        if 0 < k < len(ac) - 1:
+            d = (ac[k - 1] - ac[k + 1]) / (2 * (ac[k - 1] - 2 * ac[k] + ac[k + 1]) + 1e-12); k = k + np.clip(d, -1, 1)
+        f0.append(sr / k); ts.append(i + win / 2)
+    f0 = signal.medfilt(np.array(f0), 9)
+    f0 = np.convolve(np.pad(f0, 6, mode='edge'), np.ones(13) / 13, mode='valid')
+    fcurve = np.interp(np.arange(len(seg)), ts, f0)
+    # read the input at speed ft / f0 so that the pitch comes out constant
+    speed = ft / fcurve
+    pos = [float(pad * sr)]; end = len(seg) - pad * sr
+    while pos[-1] < end: pos.append(pos[-1] + speed[min(len(speed) - 1, int(pos[-1]))])
+    pos = np.array(pos[:-1])
+    flat = np.interp(pos, np.arange(len(seg)), seg)
+    # even out the level (the car moves relative to the microphone)
+    env = np.sqrt(signal.sosfiltfilt(signal.butter(2, 6, fs=sr, output='sos'), flat ** 2).clip(1e-8))
+    flat = flat / env
+    # loop length: a whole number of engine cycles (6 firings), ends cross-faded
+    cyc = 6 * sr / ft; fade = int(sr * 0.07)
+    n = int(np.floor((len(flat) - fade) / cyc) * cyc)
+    loop = flat[:n].copy(); tail = flat[n:n + fade]
+    w = np.linspace(0, 1, fade)
+    loop[:fade] = loop[:fade] * np.sin(w * np.pi / 2) + tail * np.cos(w * np.pi / 2)
+    # resample three copies end to end and keep the middle one, so the filter sees the loop as continuous
+    r = signal.resample_poly(np.tile(loop, 3), OUT_SR, sr); m = len(r) // 3; loop = r[m:2 * m]
+    loop = loop / (np.sqrt((loop ** 2).mean()) * 4.5)            # same loudness for every loop, with headroom
+    loop = np.tanh(loop / 0.7) * 0.7                             # soft limit: a stray pop would repeat every loop
+    wavfile.write(os.path.join(out, f'{name}.wav'), OUT_SR, (loop * 32767).astype(np.int16))
+    meta.append({'name': name, 'file': f'{name}.wav', 'hz': ft})
+    print(f'{name:8s} source {t0:.2f}-{t1:.2f}s  f0 {f0.min():.0f}-{f0.max():.0f} Hz -> {ft} Hz  loop {len(loop) / OUT_SR:.2f}s  peak {np.abs(loop).max():.2f}')
+json.dump(meta, open(os.path.join(out, 'loops.json'), 'w'))
