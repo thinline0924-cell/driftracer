@@ -12,6 +12,7 @@ import { Sound } from './audio.js';
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const COURSES = ['assets/ahvenisto', 'assets/lider'];
 const CAR_CREDIT = '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0';
 const ASSISTS = [['弱', 0.92, 1], ['強', 1.0, 1], ['オフ', 0, 0]];   // label, countersteer follow, wheelspin aid
 const PHYS_DT = 1 / 120;
@@ -26,6 +27,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 4000);
 
 const input = new Input(), hud = new Hud(), sound = new Sound(), car = new Car();
+let tracks = [], timings = [], sel = 0, loaded = -1, courseGroup = null, plain = null, busy = false;
 let track, timing, smoke, skids, carRoot, bodyNode, wheels = [], shadow, lampMat, lampGlow = [], lampLevel = 0;
 let state = 'loading', camMode = 0, camYaw = 0, hint = -1, acc = 0, last = 0, wallFlash = 0;
 let assistIdx = +(localStorage.getItem('slipangle.assist') || 0) % ASSISTS.length;
@@ -53,8 +55,8 @@ function buildWorld() {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 24, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false }));
   sky.renderOrder = -10; scene.add(sky);
   scene.fog = new THREE.Fog(SKY_HORIZON, 260, 1500);
-  const plain = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshBasicMaterial({ color: 0x5c5a45 }));
-  plain.rotation.x = -Math.PI / 2; plain.position.y = track.hLo - 3; scene.add(plain);
+  plain = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshBasicMaterial({ color: 0x5c5a45 }));
+  plain.rotation.x = -Math.PI / 2; scene.add(plain);
 
   // light for the car only (the scan carries its own baked light); sun low in the south-east as in the scan
   scene.add(new THREE.HemisphereLight(0xe3ecf5, 0x57523f, 1.25));
@@ -79,7 +81,7 @@ function placeTrackModel(gltf) {
     if (o.material.map) { o.material.map.anisotropy = aniso; o.material.map.needsUpdate = true; }
   });
   root.updateMatrixWorld(true);
-  scene.add(root);
+  courseGroup.add(root);
 }
 
 // barrier blocks along the limits that have no real barrier in the scan, and the start line
@@ -99,7 +101,7 @@ function buildTrackProps() {
     d.position.set(x, track.heightAt(x, z) + 0.3, z); d.rotation.set(0, yaw, 0); d.updateMatrix();
     inst.setMatrixAt(n, d.matrix); inst.setColorAt(n, k % 2 ? white : red);
   });
-  inst.instanceMatrix.needsUpdate = true; inst.frustumCulled = false; scene.add(inst);
+  inst.instanceMatrix.needsUpdate = true; inst.frustumCulled = false; if (spots.length) courseGroup.add(inst);
 
   const i = track.startIdx, seg = 14, pos = [], idx = [];
   for (let k = 0; k <= seg; k++) {
@@ -112,7 +114,7 @@ function buildTrackProps() {
   }
   const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); lg.setIndex(idx);
   const line = new THREE.Mesh(lg, new THREE.MeshBasicMaterial({ color: 0xf2f0ea, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-  line.frustumCulled = false; scene.add(line);
+  line.frustumCulled = false; courseGroup.add(line);
 }
 
 function buildCar(gltf) {
@@ -332,8 +334,41 @@ function show(next) {
   $('result').hidden = next !== 'result';
   $('hud').hidden = $('hudm').hidden = next !== 'drive';
 }
-function openSelect() { hud.select(track, timing.best, `${track.meta.credit} / ${CAR_CREDIT}`); show('select'); }
-function startDrive() { sound.start(); toGrid(); show('drive'); last = performance.now(); }
+function pick(i) {
+  sel = (i + tracks.length) % tracks.length; localStorage.setItem('slipangle.course', String(sel)); track = tracks[sel]; timing = timings[sel];
+  hud.buildMap(track);
+  hud.select(tracks, sel, timing.best, `${track.meta.credit} / ${CAR_CREDIT}`, pick);
+}
+function openSelect() { pick(sel); show('select'); }
+
+// the selected course's model is fetched the first time it is driven; the previous one is released
+async function loadCourse() {
+  if (loaded === sel) return;
+  $('loading').hidden = false; setLoad(0.05, 'LOADING ' + track.meta.name);
+  const gltf = await loadGLB(gltfLoader, `${track.dir}/${track.meta.model.file}`, f => setLoad(0.05 + 0.9 * f));
+  if (courseGroup) {
+    scene.remove(courseGroup);
+    courseGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      for (const m of [].concat(o.material || [])) { for (const k in m) if (m[k] && m[k].isTexture) m[k].dispose(); m.dispose(); }
+    });
+  }
+  courseGroup = new THREE.Group(); scene.add(courseGroup);
+  placeTrackModel(gltf); buildTrackProps();
+  plain.position.y = track.hLo - 3;
+  for (const s of skids) s.clear();
+  loaded = sel;
+  toGrid(); poseCar(0); moveCamera(0);
+  renderer.render(scene, camera);     // compiles shaders and uploads textures before driving starts
+  $('loading').hidden = true;
+}
+async function startDrive() {
+  if (busy) return;
+  busy = true; sound.start();
+  try { await loadCourse(); toGrid(); show('drive'); last = performance.now(); }
+  catch (e) { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; }
+  busy = false;
+}
 function openResult() { hud.result(track, timing.last); show('result'); }
 function resume() { show('drive'); last = performance.now(); }
 function setAssist(i) {
@@ -345,6 +380,7 @@ function setAssist(i) {
 input.onAction = a => {
   if (a === 'mute') sound.setMuted(!sound.muted);
   else if (state === 'select' && a === 'confirm') startDrive();
+  else if (state === 'select' && (a === 'up' || a === 'down')) pick(sel + (a === 'up' ? -1 : 1));
   else if (state === 'drive') {
     if (a === 'reset') toGrid();
     else if (a === 'camera') camMode = (camMode + 1) % 2;
@@ -362,32 +398,34 @@ $('opt-assist').addEventListener('click', () => setAssist((assistIdx + 1) % ASSI
 addEventListener('resize', resize);
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'drive') openResult(); });
 
+const gltfLoader = new GLTFLoader(); gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+
 async function boot() {
   resize();
-  setLoad(0.05, 'LOADING TRACK DATA');
-  track = await Track.load('assets/ahvenisto');
-  timing = new Timing(track);
-  timing.onLap = lap => {
-    const d = lap.prev ? lap.time - lap.prev.time : null;
-    hud.banner(fmtLap(lap.time) + (d == null ? '' : '  ' + fmtDelta(d)), d == null ? 'gain' : d < 0 ? 'gain' : 'loss');
-  };
-  const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
-  let f1 = 0, f2 = 0; const prog = () => setLoad(0.1 + 0.7 * f1 + 0.15 * f2, 'LOADING MODELS');
-  const [trackG, carG] = await Promise.all([
-    loadGLB(loader, `assets/ahvenisto/${track.meta.model.file}`, f => { f1 = f; prog(); }),
-    loadGLB(loader, 'assets/car_supra.glb', f => { f2 = f; prog(); }),
-  ]);
+  setLoad(0.05, 'LOADING');
+  let carFrac = 0;
+  const carP = loadGLB(gltfLoader, 'assets/car_supra.glb', f => { carFrac = f; setLoad(0.3 + 0.6 * f); });
+  tracks = await Promise.all(COURSES.map(d => Track.load(d)));
+  timings = tracks.map(t => {
+    const tm = new Timing(t);
+    tm.onLap = lap => {
+      const d = lap.prev ? lap.time - lap.prev.time : null;
+      hud.banner(fmtLap(lap.time) + (d == null ? '' : '  ' + fmtDelta(d)), d == null ? 'gain' : d < 0 ? 'gain' : 'loss');
+    };
+    return tm;
+  });
+  sel = Math.min(tracks.length - 1, +(localStorage.getItem('slipangle.course') || 0));
+  track = tracks[sel]; timing = timings[sel];
+  setLoad(0.3, 'LOADING');
+  const carG = await carP;
   setLoad(0.97, 'PREPARING');
-  buildWorld(); placeTrackModel(trackG); buildTrackProps(); buildCar(carG);
+  buildWorld(); buildCar(carG);
   smoke = new Smoke(scene); skids = [new Skid(scene), new Skid(scene)];
-  hud.buildMap(track);
   setAssist(assistIdx);
-  toGrid(); poseCar(0); moveCamera(0); resize();
-  renderer.render(scene, camera);     // compiles shaders and uploads textures before the first drive
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, track, timing, input, get state() { return state; } };
+  window.__game = { car, input, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });

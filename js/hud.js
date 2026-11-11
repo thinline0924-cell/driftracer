@@ -117,12 +117,18 @@ export class Hud {
     if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) for (const el of this.text.banner) el.classList.remove('on'); }
   }
 
-  select(track, best, credit) {
+  select(tracks, sel, best, credit, onPick) {
+    const track = tracks[sel];
     const list = document.getElementById('course-list');
     list.innerHTML = '';
-    const row = (no, html, sel) => { const b = document.createElement(sel ? 'button' : 'div'); b.className = 'course' + (sel ? ' sel' : ''); b.innerHTML = `<span class="no">${no}</span><span class="nm">${html}</span>`; list.appendChild(b); };
-    row('01', `<b>${track.meta.name}</b><small>${track.meta.subtitle}</small>`, true);
-    row('02', '準備中', false); row('03', '準備中', false);
+    tracks.forEach((t, i) => {
+      const b = document.createElement('button'); b.className = 'course' + (i === sel ? ' sel' : '');
+      const no = String(i + 1).padStart(2, '0');
+      b.innerHTML = i === sel ? `<span class="no">${no}</span><span class="nm"><b>${t.meta.name}</b><small>${t.meta.subtitle}</small></span>`
+        : `<span class="no">${no}</span><span class="nm">${t.meta.name}</span>`;
+      b.addEventListener('click', () => onPick(i));
+      list.appendChild(b);
+    });
     this.set('selLength', (track.length / 1000).toFixed(2) + ' km');
     let lo = 1e9, hi = -1e9;
     for (let i = 0; i < track.n; i += 4) { const h = track.heightAt(track.px[i], track.pz[i]); lo = Math.min(lo, h); hi = Math.max(hi, h); }

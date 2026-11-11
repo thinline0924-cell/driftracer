@@ -9,7 +9,7 @@ export class Input {
     addEventListener('keydown', e => {
       if (e.repeat) return;
       this.keys.add(e.code);
-      const act = { KeyR: 'reset', KeyC: 'camera', KeyM: 'mute', Escape: 'pause', Enter: 'confirm' }[e.code];
+      const act = { KeyR: 'reset', KeyC: 'camera', KeyM: 'mute', Escape: 'pause', Enter: 'confirm', ArrowUp: 'up', ArrowDown: 'down' }[e.code];
       if (act) this.onAction(act);
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     });

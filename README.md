@@ -33,15 +33,21 @@ python3 -m http.server 8000
 - `js/main.js` — 読み込み、描画、カメラ、画面の切り替え
 - `js/hud.js` `js/input.js` `js/fx.js` `js/audio.js` — 表示、入力、スモークとタイヤ痕、音
 - `assets/ahvenisto/` — コースのモデルと、そこから作った高さ・路面データ
-- `tools/` — 高さ・路面データを元のモデルから作り直すスクリプト
+- `assets/lider/` — カートコースのモデルと、そこから作った高さ・路面・走行範囲のデータ
+- `tools/` — コースのデータを元のモデルから作り直すスクリプト
+  - `usd_to_glb.py` — USD / USDZ のコースを GLB に変換
+  - `build_track.py` と `*.build.json` — 素材ごとに分かれたコースから、高さ・路面・中心線・走行範囲を自動で作る
+  - `build_heightmap.mjs` `build_surface.mjs` — スキャンで作られた一体のコース(Ahvenisto)用
 
 ## 素材のクレジット
 
 - コース: "Ahvenisto Race Circuit rallycross track" by Timo Korkalainen — CC BY 4.0
   https://sketchfab.com/3d-models/ahvenisto-race-circuit-rallycross-track-20f5d0c0c1e24f4fbea45270f333988c
   (ポリゴン数の削減と圧縮を行っています)
+- コース: "Karting Club Lider (Outdoor Race Track)" by skril4ek — CC BY-NC 4.0(非営利のみ)
+  (車の大きさに合わせて実寸の約 1.5 倍に拡大し、ポリゴン数の削減と圧縮を行っています)
 - 車: "2019 Toyota GR Supra Drift by HKS" by SIU Car Garage — CC BY-NC 4.0(非営利のみ)
   https://sketchfab.com/3d-models/2019-toyota-gr-supra-drift-by-hks-121f2bc836244f2cb107c15a68d01c54
 - three.js — MIT License(`lib/three/LICENSE`)
 
-車のモデルが非営利ライセンスのため、このゲームを広告や販売を伴う形で公開することはできません。
+車とカートコースのモデルが非営利ライセンスのため、このゲームを広告や販売を伴う形で公開することはできません。

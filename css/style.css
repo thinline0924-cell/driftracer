@@ -96,7 +96,8 @@ hr { border: 0; height: 1px; background: var(--rule); margin: 0; width: 100%; }
 .screen header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: calc(18 * var(--px)); border-bottom: 1px solid var(--rule); }
 .screen .body { flex: 1; min-height: 0; display: flex; gap: calc(56 * var(--px)); }
 .hints { display: flex; gap: calc(32 * var(--px)); font-size: calc(12 * var(--px)); color: var(--dim); letter-spacing: 0.06em; }
-.hints #credit { margin-left: auto; text-align: right; }
+.hints span { white-space: nowrap; }
+.hints #credit { margin-left: auto; text-align: right; white-space: normal; }
 .grow { flex: 1; }
 .cta { height: calc(64 * var(--px)); background: var(--acc); border: 0; color: var(--bg); font-weight: 600; font-size: calc(16 * var(--px)); letter-spacing: 0.32em; }
 .cta:active { background: var(--acc2); }
