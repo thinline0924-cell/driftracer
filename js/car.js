@@ -27,6 +27,7 @@ export const SUPRA = {
   peakSlipRatio: 0.11,
   tyreB: 3.08,         // tyre curve: peak 1.0 at normalised slip 1, ~0.92 when fully sliding
   tyreC: 1.25,
+  liftOver: 0.12,      // rear grip given up (and a third of it gained at the front) when off the throttle mid-corner
   absLateral: 0.8,     // share of front tyre capacity kept for cornering while braking
   v0: 3.0,             // slip denominators are floored at this speed (m/s)
   cdA: 0.72,
@@ -50,7 +51,7 @@ export const SUPRA = {
   shiftTime: 0.13,
   // engine torque (Nm) at full throttle, by rpm
   torque: [[900, 310], [2000, 430], [3000, 540], [4200, 585], [5600, 575], [6600, 540], [7400, 470], [7800, 380]],
-  engineBrake: 70,     // Nm at redline, closed throttle
+  engineBrake: 110,    // Nm at redline, closed throttle
 };
 
 function torqueAt(curve, rpm) {
@@ -188,6 +189,10 @@ export class Car {
     fz[2] = Math.max(60, rear / 2 - dR); fz[3] = Math.max(60, rear / 2 + dR);
     const fz0F = w * p.b / L / 2, fz0R = w * p.a / L / 2;
 
+    // lift-off: coming off the throttle while cornering loosens the rear and sharpens the front
+    const lift = p.liftOver * (1 - clamp(this.throttle / 0.3, 0, 1)) * (1 - this.brake) * clamp(Math.abs(this.ayF) / 8, 0, 1) * clamp((this.speed - 6) / 8, 0, 1)
+      * clamp(1 - Math.abs(this.beta) / 0.32, 0, 1);     // fades as the tail comes round, so it settles at a small angle
+
     let Ff = 0, Fl = 0, Mz = 0;
     const cd = Math.cos(this.steer), sd = Math.sin(this.steer);
 
@@ -197,7 +202,7 @@ export class Car {
       const vwf = u - r * lx, vwl = v + r * lz;
       const vl = vwf * cd + vwl * sd, vs = -vwf * sd + vwl * cd;
       const grip = this.surface[i];
-      const mu = (p.muOffroad + (p.muFront - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0F - 1));
+      const mu = (p.muOffroad + (p.muFront - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0F - 1)) * (1 + lift / 3);
       const cap = mu * fz[i];
       const sy = vs / Math.max(Math.abs(vl), p.v0) / p.peakSlipAngleF;
       // ABS: cornering force is served first (up to a share of the tyre's capacity), and braking
@@ -241,7 +246,7 @@ export class Car {
       const [lx, lz] = this.wheelPos[i];
       const vl = u - r * lx, vs = v + r * lz;
       const grip = this.surface[i];
-      const mu = (p.muOffroad + (p.muRear - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0R - 1));
+      const mu = (p.muOffroad + (p.muRear - p.muOffroad) * grip) * (1 - p.loadSens * (fz[i] / fz0R - 1)) * (1 - lift);
       this._rear(i, this.omega, vl, vs, fz[i], mu, o[i]);
       this._rear(i, this.omega + eps, vl, vs, fz[i], mu, o[i - 2]);
       sumFx += o[i].fx; sumK += Math.max(0, (o[i - 2].fx - o[i].fx) / eps);
