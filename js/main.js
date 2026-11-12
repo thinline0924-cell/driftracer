@@ -389,7 +389,7 @@ function relPos() {
 
 function toGrid() {
   const g = track.gridPose();
-  car.reset(g.x, g.z, g.psi); hint = g.i; camYaw = g.psi; pose.ready = false;
+  car.reset(g.x, g.z, g.psi); hint = g.i; camYaw = g.psi; pose.ready = false; cam.ready = false;
   prev.x = car.x; prev.z = car.z; prev.psi = car.psi;
   timing.reset(); acc = 0;
   for (const s of skids) s.has = false;
@@ -419,6 +419,7 @@ function effects(dt) {
 }
 
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+const cam = { ready: false, dist: 5.3, h: 0, lx: 0, ly: 0, lz: 0 };
 function moveCamera(dt) {
   const sp = Math.sin(car.psi), cp = Math.cos(car.psi);
   if (camMode === 1) {
@@ -430,17 +431,28 @@ function moveCamera(dt) {
     return;
   }
   camera.up.set(0, 1, 0);
-  // the camera sits between where the car points and where it is going, so the slide angle reads on screen
+  // the camera sits between where the car points and where it is going, so the slide angle reads on
+  // screen. It follows on soft springs: it swings round after the car, drops back a little under
+  // acceleration and closes in under braking, and rises and falls more slowly than the car
   const velYaw = car.speed > 3 ? Math.atan2(car.vx, car.vz) : car.psi;
   const lead = car.u > -1 ? wrap(velYaw - car.psi) : 0;
   const target = car.psi + clamp(lead, -1.2, 1.2) * 0.58;
-  camYaw += wrap(target - camYaw) * (1 - Math.exp(-dt / 0.11));
-  const dist = 5.3 + Math.min(1.4, car.speed * 0.025), sy = Math.sin(camYaw), cy = Math.cos(camYaw);
-  camPos.set(car.x - sy * dist, pose.y + 1.75, car.z - cy * dist);
+  const ease = tau => (cam.ready ? 1 - Math.exp(-dt / tau) : 1);
+  camYaw += wrap(target - camYaw) * ease(0.24);
+  const distWant = 5.3 + Math.min(1.4, car.speed * 0.025) + clamp(car.axF * 0.07, -0.55, 0.7);
+  cam.dist += (distWant - cam.dist) * ease(0.35);
+  cam.h += (pose.y + 1.75 - cam.h) * ease(0.16);
+  const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
+  camPos.set(car.x - sy * cam.dist, cam.h, car.z - cy * cam.dist);
   camPos.y = Math.max(camPos.y, track.heightAt(camPos.x, camPos.z) + 0.7);
   const shake = wallFlash * 0.12;
   camera.position.set(camPos.x + (Math.random() - 0.5) * shake, camPos.y + (Math.random() - 0.5) * shake, camPos.z);
-  camLook.set(car.x + sy * 2.2, pose.y + 0.95, car.z + cy * 2.2);
+  // the point looked at trails the car slightly too, so quick flicks do not snap the view
+  const lx = car.x + sy * 2.2, ly = pose.y + 0.95, lz = car.z + cy * 2.2;
+  const kl = ease(0.07);
+  cam.lx += (lx - cam.lx) * kl; cam.ly += (ly - cam.ly) * kl; cam.lz += (lz - cam.lz) * kl;
+  cam.ready = true;
+  camLook.set(cam.lx, cam.ly, cam.lz);
   camera.lookAt(camLook);
   const fov = 58 + Math.min(15, car.speed * 0.3);
   if (Math.abs(fov - camera.fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt / 0.3)); camera.updateProjectionMatrix(); }
@@ -501,7 +513,7 @@ function frame() {
 
 // ---------- showroom: the chosen car on a turntable behind the select screen ----------
 const studio = new THREE.Scene(), studioCam = new THREE.PerspectiveCamera(30, 1, 0.5, 200);
-let turn = 0.6, turnVel = 0, dragX = null;
+let turn = 0.6, turnVel = 0, dragX = null, entering = false;
 function buildStudio() {
   studio.background = new THREE.Color(0x0a0b0c);
   studio.environment = scene.environment; studio.environmentIntensity = 0.55;
@@ -542,7 +554,7 @@ function toStudio() {
 function toCourse() { scene.add(carRoot); }
 
 function showroom(dt) {
-  if (carRoot.parent !== studio) toStudio();
+  if (!entering && carRoot.parent !== studio) toStudio();
   // slow turn, carried on by a flick and settling back to the idle speed
   turnVel += (0.22 - turnVel) * Math.min(1, dt * 1.5);
   if (dragX === null) turn += turnVel * dt;
@@ -600,8 +612,11 @@ async function loadCourse() {
 async function startDrive() {
   if (busy) return;
   busy = true; sound.start();
-  try { toCourse(); await loadCourse(); toGrid(); show('drive'); last = performance.now(); }
+  // the showroom must not reclaim the car while the course loads: it keeps drawing during the wait
+  entering = true;
+  try { await loadCourse(); toCourse(); toGrid(); show('drive'); last = performance.now(); }
   catch (e) { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; }
+  finally { entering = false; }
   busy = false;
 }
 function openResult() { hud.result(track, timing.last); show('result'); }
@@ -654,7 +669,7 @@ async function boot() {
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, input, sound, camera, renderer, scene, hud, get wallFlash() { return wallFlash; }, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
+  window.__game = { car, input, sound, camera, renderer, scene, hud, get carRoot() { return carRoot; }, get wallFlash() { return wallFlash; }, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });
