@@ -1,7 +1,7 @@
 // Tyre smoke (point sprites) and skid marks (ground ribbons).
 import * as THREE from 'three';
 
-const MAX_SMOKE = 260;
+const MAX_SMOKE = 200;
 
 export class Smoke {
   constructor(scene) {
@@ -20,7 +20,7 @@ export class Smoke {
       uniforms: { scale: { value: 600 }, tint: { value: new THREE.Color(0xd9d6cf) } },
       vertexShader: `attribute vec2 aux; varying float vA; uniform float scale;
         void main(){ vA = aux.y; vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = aux.x * scale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }`,
+          gl_PointSize = min(aux.x * scale / max(0.1, -mv.z), scale * 0.22); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying float vA; uniform vec3 tint;
         void main(){ vec2 c = gl_PointCoord - 0.5; float d = dot(c, c) * 4.0; if (d > 1.0) discard;
           float a = (1.0 - d); gl_FragColor = vec4(tint, a * a * vA); }`,

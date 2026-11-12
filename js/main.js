@@ -35,7 +35,12 @@ const WALL_MARGIN = 0.95;   // half the car's width: the limits are measured to 
 const coarse = matchMedia('(pointer: coarse)').matches;
 const canvas = $('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !coarse, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
+// drawing resolution: capped below the screen's own on high-density displays, and lowered further
+// at run time whenever the frame rate cannot be held (see quality())
+const PR_MAX = Math.min(devicePixelRatio, coarse ? 1.25 : 1.5), PR_MIN = coarse ? 0.55 : 0.7;
+let pixelRatio = PR_MAX;
+try { const q = +localStorage.getItem('slipangle.pr'); if (q >= PR_MIN && q <= PR_MAX) pixelRatio = q; } catch { /* storage unavailable */ }
+renderer.setPixelRatio(pixelRatio);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 4000);
@@ -451,11 +456,31 @@ function resize() {
   else if (carRoot && state !== 'loading') renderer.render(scene, camera);
 }
 
+// adaptive resolution: frame times are averaged over a second; a slow second lowers the drawing
+// resolution one step, and a run of fast seconds raises it again (never above PR_MAX)
+const qual = { t: 0, n: 0, sum: 0, fast: 0, hold: 0 };
+function quality(interval) {
+  if (interval <= 0 || interval > 1000) return;              // tab switches and loading stalls say nothing
+  qual.sum += interval; qual.n++; qual.t += interval;
+  if (qual.t < 1000) return;
+  const avg = qual.sum / qual.n; qual.t = qual.sum = qual.n = 0;
+  if (qual.hold > 0) { qual.hold--; return; }
+  let next = pixelRatio;
+  if (avg > 19.5) { next = Math.max(PR_MIN, pixelRatio * (avg > 30 ? 0.8 : 0.88)); qual.fast = 0; qual.hold = 1; }
+  else if (avg < 17.6 && pixelRatio < PR_MAX && ++qual.fast >= 4) { next = Math.min(PR_MAX, pixelRatio * 1.1); qual.fast = 0; qual.hold = 2; }
+  if (Math.abs(next - pixelRatio) > 0.01) {
+    pixelRatio = next; renderer.setPixelRatio(pixelRatio); resize();
+    try { localStorage.setItem('slipangle.pr', pixelRatio.toFixed(2)); } catch { /* storage unavailable */ }
+  }
+}
+
 function frame() {
   requestAnimationFrame(frame);
   // one clock for everything: the frame callback's own timestamp can be older than a time taken
   // just before, and a negative step made the camera smoothing run backwards and shake the view
-  const now = performance.now(), dt = clamp((now - last) / 1000, 0, 0.1); last = now;
+  const now = performance.now(), dt = clamp((now - last) / 1000, 0, 0.1);
+  if (state === 'drive' || state === 'select') quality(now - last);
+  last = now;
   if (state === 'select') { sound.update(car.rpm, 0, 0, 0, 0, false); showroom(dt); return; }
   if (state !== 'drive') { sound.update(car.rpm, 0, 0, 0, 0, false); return; }
   const inp = input.read();
@@ -629,7 +654,7 @@ async function boot() {
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, input, sound, camera, get wallFlash() { return wallFlash; }, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
+  window.__game = { car, input, sound, camera, renderer, scene, hud, get wallFlash() { return wallFlash; }, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });
