@@ -73,6 +73,34 @@ export const RX7 = {
   engineBrake: 60,
 };
 
+// Porsche 911 Carrera (996, 2000): 3.4 flat-six behind the rear axle, 300 PS, road tyres.
+// Most of the weight on the rear wheels: strong traction, and a tail that comes round on a lift.
+export const P996 = {
+  ...SUPRA,
+  mass: 1320, yawInertia: 2050, a: 1.46, b: 0.9, trackF: 1.465, trackR: 1.5, cgHeight: 0.47, wheelRadius: 0.311,
+  muFront: 1.42, muRear: 1.5, muOffroad: 0.58, downforce: 0.35, maxSteer: 0.72, liftOver: 0.16, powerPush: 0.09, slowTurnIn: 0.1,
+  brakeForceF: 7000, brakeTorqueR: 1050, handbrakeTorque: 4600, diffLock: 0.3,
+  wheelInertia: 2.3, engineInertia: 0.11,
+  gears: [3.82, 2.2, 1.52, 1.22, 1.02, 0.84], final: 3.44,
+  idle: 900, redline: 7300, shiftUp: 7000, shiftDown: 3300, revScale: 8000,
+  torque: [[900, 220], [2000, 280], [3000, 315], [4600, 350], [5800, 335], [6800, 310], [7300, 285], [7600, 200]],
+  engineBrake: 75,
+};
+
+// Aston Martin Vanquish (2012): 5.9 V12 at the front, 573 PS, heavy and long. Stable, with big
+// power in hand to bring the rear round.
+export const VANQUISH = {
+  ...SUPRA,
+  mass: 1740, yawInertia: 3350, a: 1.34, b: 1.4, trackF: 1.574, trackR: 1.604, cgHeight: 0.47, wheelRadius: 0.345,
+  muFront: 1.46, muRear: 1.54, muOffroad: 0.58, downforce: 0.55, maxSteer: 0.72, slowTurnIn: 0.1,
+  brakeForceF: 9200, brakeTorqueR: 1500, handbrakeTorque: 6000, diffLock: 0.3,
+  wheelInertia: 3.0, engineInertia: 0.2,
+  gears: [4.17, 2.34, 1.52, 1.14, 0.87, 0.69], final: 3.46,
+  idle: 750, redline: 6900, shiftUp: 6600, shiftDown: 3000, revScale: 8000,
+  torque: [[700, 380], [2000, 480], [3500, 560], [5500, 620], [6000, 615], [6750, 595], [7000, 560], [7300, 400]],
+  engineBrake: 110,
+};
+
 function torqueAt(curve, rpm) {
   if (rpm <= curve[0][0]) return curve[0][1];
   for (let i = 1; i < curve.length; i++) {

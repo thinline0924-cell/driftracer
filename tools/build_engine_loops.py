@@ -5,6 +5,11 @@ The config names stretches of the recording where the engine is clearly audible.
 the engine's pitch is tracked, the stretch is resampled so that pitch becomes constant, the
 level is evened out, and the ends are cross-faded into a seamless loop. The config's "play"
 block (how the loops map onto rpm) is copied into loops.json for the game.
+
+Entries under "derive" build a loop at a higher firing rate from an existing one, for recordings
+that never rev up: one engine cycle at a time is cut from the source loop and laid down again at
+the new spacing (pitch-synchronous overlap-add), so the rate rises while the tone of the exhaust
+stays that of the recording, instead of everything being sped up.
 Needs numpy and scipy.
 """
 import sys, os, json, numpy as np
@@ -23,6 +28,7 @@ x /= np.abs(x).max()
 hp = signal.butter(2, 35, btype='high', fs=sr, output='sos')
 bp = signal.butter(4, [40, 1200], btype='band', fs=sr, output='sos')
 meta = []
+made = {}
 for name, t0, t1, flo, fhi, ft in LOOPS:
     pad = min(0.15, t0)
     a = int((t0 - pad) * sr); b = int((t1 + pad) * sr)
@@ -61,5 +67,35 @@ for name, t0, t1, flo, fhi, ft in LOOPS:
     loop = np.tanh(loop / 0.7) * 0.7                             # soft limit: a stray pop would repeat every loop
     wavfile.write(os.path.join(out, f'{name}.wav'), OUT_SR, (loop * 32767).astype(np.int16))
     meta.append({'name': name, 'file': f'{name}.wav', 'hz': ft})
+    made[name] = (loop, ft)
     print(f'{name:8s} source {t0:.2f}-{t1:.2f}s  f0 {f0.min():.0f}-{f0.max():.0f} Hz -> {ft} Hz  loop {len(loop) / OUT_SR:.2f}s  peak {np.abs(loop).max():.2f}')
+
+
+def psola(src, hz_src, hz_out, seconds=1.0):
+    """Overlap-add one-cycle grains of a constant-pitch loop at a new cycle spacing; the result loops."""
+    Ls = len(src); Ts = OUT_SR / hz_src
+    # where in each cycle the firing pulse sits: fold the loop over one cycle and take the loudest point
+    ph = np.arange(Ls) % Ts
+    bins = np.zeros(int(np.ceil(Ts))); np.add.at(bins, ph.astype(int), np.abs(src))
+    bins = np.convolve(np.pad(bins, 3, mode='wrap'), np.ones(7) / 7, mode='valid')
+    phi = float(np.argmax(bins))
+    m = max(1, int(round(seconds * hz_out))); Lo = int(round(m * OUT_SR / hz_out)); Tn = Lo / m
+    half = int(np.ceil(Ts)); offs = np.arange(-half, half + 1); win = 0.5 + 0.5 * np.cos(np.pi * offs / half)
+    out = np.zeros(Lo); grid = np.arange(Ls + 1)
+    for j in range(m):
+        to = j * Tn; ts = to * Ls / Lo
+        k = round((ts - phi) / Ts); cs = (phi + k * Ts) % Ls
+        g = np.interp((cs + offs) % Ls, grid, np.append(src, src[0])) * win
+        np.add.at(out, (int(round(to)) + offs) % Lo, g)
+    return out, OUT_SR * m / Lo
+
+for d in cfg.get('derive', []):
+    base, hz0 = made[d['from']]
+    loop, hz = psola(base, hz0, d['hz'])
+    loop = signal.sosfiltfilt(signal.butter(2, 30, btype='high', fs=OUT_SR, output='sos'), np.tile(loop, 3))[len(loop):2 * len(loop)]
+    loop = loop / (np.sqrt((loop ** 2).mean()) * 4.5); loop = np.tanh(loop / 0.7) * 0.7
+    wavfile.write(os.path.join(out, f"{d['name']}.wav"), OUT_SR, (loop * 32767).astype(np.int16))
+    meta.append({'name': d['name'], 'file': f"{d['name']}.wav", 'hz': round(hz, 3)})
+    print(f"{d['name']:8s} derived from {d['from']} at {hz:.1f} Hz  loop {len(loop) / OUT_SR:.2f}s")
+
 json.dump(dict(cfg['play'], loops=meta), open(os.path.join(out, 'loops.json'), 'w'))

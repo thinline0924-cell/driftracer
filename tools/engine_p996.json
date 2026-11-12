@@ -1,0 +1,9 @@
+{
+ "loops": [
+  {"name": "idle", "from": 3.00, "to": 3.80, "search": [48, 70], "hz": 58.0},
+  {"name": "on_low", "from": 4.02, "to": 4.72, "search": [58, 108], "hz": 82.0},
+  {"name": "on_high", "from": 5.00, "to": 6.05, "search": [108, 145], "hz": 128.0},
+  {"name": "off", "from": 1.62, "to": 2.30, "search": [56, 98], "hz": 75.0}
+ ],
+ "play": {"hzPerRpm": 0.042, "idleFirst": true, "on": ["idle", "on_low", "on_high"], "fades": [[1300, 2000], [2300, 3000]], "off": "off", "offFrom": [1200, 2200], "minRate": {"idle": 0.6}}
+}

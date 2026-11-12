@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { Track } from './track.js';
-import { Car, SUPRA, RX7 } from './car.js';
+import { Car, SUPRA, RX7, P996, VANQUISH } from './car.js';
 import { Input } from './input.js';
 import { Timing, fmtLap, fmtDelta } from './timing.js';
 import { Hud } from './hud.js';
@@ -21,6 +21,12 @@ const CARS = [
   { id: 'rx7', name: 'RX-7 GT300', spec: RX7, file: 'assets/car_rx7.glb', engine: 'assets/engine/rx7',
     scale: 0.2675, yaw: Math.PI / 2, lift: 0.022, wheels: ['rx7_fl_1', 'rx7_fr_2', 'rx7_rl_4', 'rx7_rr_3'], body: 'rx7_body_0', cutout: /^Rim/, caliper: /^Brembo/, lampTexture: true, lamp: [0.5, 0.74, -2.12], lean: 0.22,
     credit: '"2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab, CC BY 4.0 / Engine: "rotary engine" by fuser10 (Freesound 100791)' },
+  { id: 'p996', name: '911 CARRERA', spec: P996, file: 'assets/car_p996.glb', engine: 'assets/engine/p996',
+    scale: 1, yaw: 0, lift: 0.003, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lampTexture: true, lamp: [0.6, 0.85, -2.18], lean: 0.35,
+    credit: '"2000 Porsche 911 Carrera (996)" by Ddiaz Design, CC BY-NC-SA 4.0 / Engine: "porsche" by mmplisskin (Freesound 90404)' },
+  { id: 'vanquish', name: 'VANQUISH', spec: VANQUISH, file: 'assets/car_vanquish.glb', engine: 'assets/engine/vanquish',
+    scale: 1, yaw: 0, lift: 0.133, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /^red_glass/, caliper: /^Calipers/, lamp: [0.56, 0.86, -2.32], glowSize: [0.46, 0.22], lean: 0.35,
+    credit: '"2012 Aston Martin Vanquish Coupe" by Ddiaz Design, CC BY-NC-SA 4.0 / Engine: "Aston Martin V8 Vantage start up" by lmartins (Freesound 547057)' },
 ];
 const ASSISTS = [['弱', 0.92, 1], ['強', 1.0, 1], ['オフ', 0, 0]];   // label, countersteer follow, wheelspin aid
 const PHYS_DT = 1 / 120;
@@ -205,7 +211,7 @@ function buildCar(cfg, gltf) {
     if (!o.isMesh) return;
     o.frustumCulled = false;
     const m = o.material;
-    if (/glass/i.test(m.name)) {
+    if (/glass/i.test(m.name) && !(cfg.lens && cfg.lens.test(m.name)) && !/red|orange|amber/i.test(m.name)) {
       // the model's glass uses transmission, which costs a second scene pass; plain blending reads the same here
       m.transmission = 0; m.transparent = true; m.depthWrite = false; m.roughness = 0.08; m.metalness = 0;
       m.opacity = /ligh/i.test(m.name) ? 0.3 : 0.62; m.color.set(0x0c0f12);
@@ -252,7 +258,7 @@ function buildCar(cfg, gltf) {
   const glow = spots.map(([x, y, z]) => {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
     sp.position.set(x, y, z - 0.04);
-    if (lampSpots) sp.scale.set(0.42, 0.24, 1); else sp.scale.set(0.78, 0.34, 1);
+    if (cfg.glowSize) sp.scale.set(cfg.glowSize[0], cfg.glowSize[1], 1); else if (lampSpots) sp.scale.set(0.42, 0.24, 1); else sp.scale.set(0.78, 0.34, 1);
     sp.renderOrder = 6; body.add(sp); return sp;
   });
   // soft contact shadow

@@ -56,12 +56,22 @@ python3 -m http.server 8000
 - GR Supra: "2019 Toyota GR Supra Drift by HKS" by SIU Car Garage — CC BY-NC 4.0(非営利のみ)
   https://sketchfab.com/3d-models/2019-toyota-gr-supra-drift-by-hks-121f2bc836244f2cb107c15a68d01c54
 - RX-7: "2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab — CC BY 4.0
+- 911 Carrera: "2000 Porsche 911 Carrera (996)" by Ddiaz Design — CC BY-NC-SA 4.0(非営利のみ・改変物は同じライセンスで)
+  https://sketchfab.com/3d-models/2000-porsche-911-carrera-996-537f06116f1f40d7bc0de28a7ab653da
+- Vanquish: "2012 Aston Martin Vanquish Coupe" by Ddiaz Design — CC BY-NC-SA 4.0(非営利のみ・改変物は同じライセンスで)
+  https://sketchfab.com/3d-models/2012-aston-martin-vanquish-coupe-b4bcb1b431b541e6af5b00c6d083f6db
+  (この 2 台は車輪を本体から切り分け、圧縮しています。`tools/prep_car.mjs`)
 
 エンジン音(聴き取れる区間を切り出し、回転数が一定になるよう補正してループ素材にしています。`tools/build_engine_loops.py`)
 - GR Supra: "6 cyl vintageracecar tostartline burnout startclimb" by ears68(Freesound 185151)
   https://freesound.org/people/ears68/sounds/185151/
 - RX-7: "rotary engine" by fuser10(Freesound 100791)
   https://freesound.org/people/fuser10/sounds/100791/
+- 911 Carrera: "porsche" by mmplisskin(Freesound 90404)
+  https://freesound.org/people/mmplisskin/sounds/90404/
+- Vanquish: "Aston Martin V8 Vantage start up" by lmartins(Freesound 547057)
+  https://freesound.org/people/lmartins/sounds/547057/
+  (録音はアイドリングだけなので、高い回転の音はアイドリングの音から 1 回転ずつ並べ直して作っています)
 
 その他
 - three.js — MIT License(`lib/three/LICENSE`)
