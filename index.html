@@ -125,9 +125,18 @@
     <div class="list">
       <div class="lbl">COURSE</div>
       <div id="course-list"></div>
+      <div class="mapbox"><svg id="selmap" viewBox="0 0 200 130" role="img" aria-label="コース図"></svg></div>
     </div>
     <div class="mapcol">
-      <div class="mapbox"><svg id="selmap" viewBox="0 0 200 130" role="img" aria-label="コース図"></svg></div>
+      <div class="stage" id="stage">
+        <button class="arrow prev" id="car-prev" aria-label="前の車"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M11 3L5 9l6 6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+        <button class="arrow next" id="car-next" aria-label="次の車"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 3l6 6-6 6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+        <div class="plate">
+          <div class="lbl"><span data-b="carNo">CAR 01</span> / <span data-b="carCount">04</span></div>
+          <div class="platename" data-b="carTitle">GR SUPRA DRIFT</div>
+          <div class="platespec num" data-b="carSpec">—</div>
+        </div>
+      </div>
       <div class="facts">
         <div><div class="lbl">LENGTH</div><div class="num md" data-b="selLength">—</div></div>
         <div><div class="lbl">ELEVATION</div><div class="num md" data-b="selElev">—</div></div>
@@ -143,13 +152,13 @@
       <div class="blk ruled">
         <div class="lbl">CAR</div>
         <button id="opt-car" class="carname carbtn" aria-label="車を切り替える">GR SUPRA DRIFT</button>
-        <div class="kv"><span class="k">駆動方式</span><span>FR</span><span class="k">変速</span><span>オート</span><span class="k">カウンター補助</span><button id="opt-assist" class="opt">弱</button></div>
+        <div class="kv"><span class="k">駆動方式</span><span data-b="carLayout">FR</span><span class="k">変速</span><span>オート</span><span class="k">カウンター補助</span><button id="opt-assist" class="opt">弱</button></div>
       </div>
       <div class="grow"></div>
       <button id="btn-start" class="cta">START</button>
     </div>
   </div>
-  <footer class="hints"><span class="pc">↑ ↓ コースを選ぶ · ENTER スタート</span><span class="pc">← → ステア · ↑ アクセル · ↓ ブレーキ · SPACE サイドブレーキ</span><span id="credit"></span></footer>
+  <footer class="hints"><span class="pc">↑ ↓ コース · ← → 車 · ENTER スタート</span><span class="pc">← → ステア · ↑ アクセル · ↓ ブレーキ · SPACE サイドブレーキ</span><span id="credit"></span></footer>
 </section>
 
 <!-- result -->

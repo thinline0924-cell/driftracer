@@ -116,9 +116,20 @@ hr { border: 0; height: 1px; background: var(--rule); margin: 0; width: 100%; }
 .course.sel .nm b { font-size: calc(24 * var(--px)); font-weight: 500; }
 .course.sel .nm small { font-size: calc(12 * var(--px)); color: var(--dim); letter-spacing: 0.04em; }
 .course.sel::after { content: ''; width: calc(8 * var(--px)); height: calc(8 * var(--px)); background: var(--acc); }
+/* the select screen is see-through: the showroom is drawn on the canvas behind it */
+#select { background: transparent; }
+#select header, #select .list, #select .side, #select .facts, #select .hints { position: relative; z-index: 1; }
 #select .mapcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(20 * var(--px)); }
-.mapbox { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-#selmap { width: 100%; height: 100%; max-width: calc(560 * var(--px)); max-height: calc(364 * var(--px)); overflow: visible; }
+.stage { flex: 1; min-height: 0; position: relative; cursor: grab; touch-action: none; }
+.stage:active { cursor: grabbing; }
+.arrow { position: absolute; top: 42%; width: calc(48 * var(--px)); height: calc(48 * var(--px)); min-width: 44px; min-height: 44px; background: transparent; border: 1px solid var(--rule); color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 0; }
+.arrow:hover { border-color: var(--dim); }
+.arrow.prev { left: 0; } .arrow.next { right: 0; }
+.plate { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: calc(8 * var(--px)); pointer-events: none; }
+.platename { font-size: calc(28 * var(--px)); font-weight: 500; letter-spacing: 0.16em; }
+.platespec { font-size: calc(13 * var(--px)); color: var(--dim); letter-spacing: 0.06em; }
+#select .list .mapbox { margin-top: auto; height: calc(190 * var(--px)); display: flex; align-items: center; justify-content: center; padding-top: calc(18 * var(--px)); border-top: 1px solid var(--rule); }
+#selmap { width: 100%; height: 100%; overflow: visible; }
 .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(24 * var(--px)); padding-top: calc(18 * var(--px)); border-top: 1px solid var(--rule); }
 .facts > div { display: flex; flex-direction: column; gap: calc(8 * var(--px)); }
 #select .side { width: calc(320 * var(--px)); display: flex; flex-direction: column; gap: calc(28 * var(--px)); }
@@ -210,6 +221,9 @@ hr { border: 0; height: 1px; background: var(--rule); margin: 0; width: 100%; }
   .course .no { font-size: calc(13 * var(--px)); } .course .nm { font-size: calc(14 * var(--px)); gap: calc(4 * var(--px)); }
   .course.sel .nm b { font-size: calc(18 * var(--px)); } .course.sel .nm small { font-size: calc(11 * var(--px)); }
   .facts { display: none; }
+  #select .list .mapbox { display: none; }
+  .platename { font-size: calc(18 * var(--px)); } .platespec { font-size: calc(11 * var(--px)); }
+  .arrow { top: auto; bottom: 0; }
   #select .side { width: calc(200 * var(--px)); gap: calc(10 * var(--px)); }
   .blk { gap: calc(6 * var(--px)); } .blk.ruled { padding-top: calc(10 * var(--px)); }
   .pb { font-size: calc(32 * var(--px)); }

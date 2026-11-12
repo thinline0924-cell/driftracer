@@ -126,6 +126,17 @@ export class Hud {
     const b = document.getElementById('opt-car'); if (b) b.textContent = name;
   }
 
+  // name plate under the showroom: position in the line-up, name, and headline figures
+  setPlate(i, n, cfg) {
+    const p = cfg.spec;
+    let ps = 0; for (const [rpm, nm] of p.torque) if (rpm <= p.redline) ps = Math.max(ps, nm * rpm / 9549 * 1.36);
+    this.set('carNo', 'CAR ' + String(i + 1).padStart(2, '0'));
+    this.set('carCount', String(n).padStart(2, '0'));
+    this.set('carTitle', cfg.name);
+    this.set('carSpec', `${Math.round(ps / 5) * 5} PS · ${p.mass} kg · ${cfg.layout}`);
+    this.set('carLayout', cfg.layout);
+  }
+
   select(tracks, sel, best, credit, onPick) {
     const track = tracks[sel];
     const list = document.getElementById('course-list');

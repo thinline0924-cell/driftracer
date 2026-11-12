@@ -15,16 +15,16 @@ const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const COURSES = ['assets/ahvenisto', 'assets/lider', 'assets/driftpark'];
 // lamp: brake-lamp position in metres (left, up, forward); lens / cutout: material name patterns
 const CARS = [
-  { id: 'supra', name: 'GR SUPRA DRIFT', spec: SUPRA, file: 'assets/car_supra.glb', engine: 'assets/engine/supra',
+  { id: 'supra', name: 'GR SUPRA DRIFT', layout: 'FR', spec: SUPRA, file: 'assets/car_supra.glb', engine: 'assets/engine/supra',
     scale: 1, yaw: 0, lift: 0, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /lighglass/i, lamp: [0.525, 0.71, -2.06], lean: 0.32,
     credit: '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0 / Engine: "6 cyl vintage racecar" by ears68 (Freesound 185151)' },
-  { id: 'rx7', name: 'RX-7 GT300', spec: RX7, file: 'assets/car_rx7.glb', engine: 'assets/engine/rx7',
+  { id: 'rx7', name: 'RX-7 GT300', layout: 'FR', spec: RX7, file: 'assets/car_rx7.glb', engine: 'assets/engine/rx7',
     scale: 0.2675, yaw: Math.PI / 2, lift: 0.022, wheels: ['rx7_fl_1', 'rx7_fr_2', 'rx7_rl_4', 'rx7_rr_3'], body: 'rx7_body_0', cutout: /^Rim/, caliper: /^Brembo/, lampTexture: true, lamp: [0.5, 0.74, -2.12], lean: 0.22,
     credit: '"2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab, CC BY 4.0 / Engine: "rotary engine" by fuser10 (Freesound 100791)' },
-  { id: 'p996', name: '911 CARRERA', spec: P996, file: 'assets/car_p996.glb', engine: 'assets/engine/p996',
+  { id: 'p996', name: '911 CARRERA', layout: 'RR', spec: P996, file: 'assets/car_p996.glb', engine: 'assets/engine/p996',
     scale: 1, yaw: 0, lift: 0.003, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lampTexture: true, lamp: [0.6, 0.85, -2.18], lean: 0.35,
     credit: '"2000 Porsche 911 Carrera (996)" by Ddiaz Design, CC BY-NC-SA 4.0 / Engine: "porsche" by mmplisskin (Freesound 90404)' },
-  { id: 'vanquish', name: 'VANQUISH', spec: VANQUISH, file: 'assets/car_vanquish.glb', engine: 'assets/engine/vanquish',
+  { id: 'vanquish', name: 'VANQUISH', layout: 'FR', spec: VANQUISH, file: 'assets/car_vanquish.glb', engine: 'assets/engine/vanquish',
     scale: 1, yaw: 0, lift: 0.133, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /^red_glass/, caliper: /^Calipers/, lamp: [0.56, 0.86, -2.32], glowSize: [0.46, 0.22], lean: 0.35,
     credit: '"2012 Aston Martin Vanquish Coupe" by Ddiaz Design, CC BY-NC-SA 4.0 / Engine: "Aston Martin V8 Vantage start up" by lmartins (Freesound 547057)' },
 ];
@@ -286,6 +286,8 @@ async function setCar(i) {
     }
     for (const c of CARS) if (c.vis) c.vis.root.visible = c === cfg;
     vis = cfg.vis;
+    if (carRoot.parent === studio) toStudio();
+    hud.setPlate(carIdx, CARS.length, cfg);
     car.setSpec(cfg.spec); sound.setEngine(cfg.engine); hud.setCar(cfg.name, cfg.spec);
     localStorage.setItem('slipangle.car', cfg.id);
     if (tracks.length) {
@@ -371,7 +373,7 @@ function walls() {
   car.vx -= nx * vn * 1.2; car.vz -= nz * vn * 1.2;
   const scrub = 1 - Math.min(0.3, vn * 0.035);
   car.vx *= scrub; car.vz *= scrub; car.r *= 0.55;
-  if (vn > 1.5) { wallFlash = Math.min(1, vn / 8); return true; }
+  if (vn > 1.5) { wallFlash = Math.max(wallFlash, Math.min(1, vn / 8)); return true; }
   return false;
 }
 
@@ -437,7 +439,7 @@ function moveCamera(dt) {
   camera.lookAt(camLook);
   const fov = 58 + Math.min(15, car.speed * 0.3);
   if (Math.abs(fov - camera.fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt / 0.3)); camera.updateProjectionMatrix(); }
-  wallFlash = Math.max(0, wallFlash - dt * 3);
+  wallFlash = clamp(wallFlash - dt * 3, 0, 1);
 }
 
 function resize() {
@@ -445,12 +447,16 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
   if (smoke) smoke.setViewport(h * renderer.getPixelRatio(), camera.fov);
-  if (carRoot && state !== 'loading') renderer.render(scene, camera);
+  if (carRoot && state === 'select') showroom(0);
+  else if (carRoot && state !== 'loading') renderer.render(scene, camera);
 }
 
-function frame(now) {
+function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.1, (now - last) / 1000 || 0); last = now;
+  // one clock for everything: the frame callback's own timestamp can be older than a time taken
+  // just before, and a negative step made the camera smoothing run backwards and shake the view
+  const now = performance.now(), dt = clamp((now - last) / 1000, 0, 0.1); last = now;
+  if (state === 'select') { sound.update(car.rpm, 0, 0, 0, 0, false); showroom(dt); return; }
   if (state !== 'drive') { sound.update(car.rpm, 0, 0, 0, 0, false); return; }
   const inp = input.read();
   acc += dt;
@@ -466,6 +472,69 @@ function frame(now) {
   const off = 1 - (car.surface[0] + car.surface[1] + car.surface[2] + car.surface[3]) / 4;
   sound.update(car.rpm, car.throttle, Math.max(rearSlide, frontSlide * 0.7), off, car.speed, true, car.shiftT > 0, car.rpm > car.p.redline - 90 && car.throttle > 0.5);
   renderer.render(scene, camera);
+}
+
+// ---------- showroom: the chosen car on a turntable behind the select screen ----------
+const studio = new THREE.Scene(), studioCam = new THREE.PerspectiveCamera(30, 1, 0.5, 200);
+let turn = 0.6, turnVel = 0, dragX = null;
+function buildStudio() {
+  studio.background = new THREE.Color(0x0a0b0c);
+  studio.environment = scene.environment; studio.environmentIntensity = 0.55;
+  studio.add(new THREE.HemisphereLight(0xdfe6ee, 0x0a0b0c, 0.5));
+  const key = new THREE.SpotLight(0xffffff, 120, 30, 0.55, 0.65, 1.6); key.position.set(2.5, 8.5, 4.5); studio.add(key); studio.add(key.target);
+  const rim = new THREE.DirectionalLight(0xc9d6e6, 1.4); rim.position.set(-4, 3, -6); studio.add(rim);
+  const fill = new THREE.DirectionalLight(0xffe8d6, 0.5); fill.position.set(5, 1.5, 2); studio.add(fill);
+  // floor: unlit, so its rim is exactly the page colour and has no visible edge. The pool of light
+  // under the car and the turntable's edge are painted into it, which keeps the ring smooth
+  const R = 18, c = document.createElement('canvas'); c.width = c.height = 1024;
+  const g = c.getContext('2d'), px = 512 / R;
+  const gr = g.createRadialGradient(512, 512, 0, 512, 512, 512);
+  gr.addColorStop(0, 'rgb(31,33,36)'); gr.addColorStop(3.4 / R, 'rgb(24,26,29)'); gr.addColorStop(6 / R, 'rgb(14,15,17)'); gr.addColorStop(1, 'rgb(10,11,12)');
+  g.fillStyle = gr; g.fillRect(0, 0, 1024, 1024);
+  g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.arc(512, 512, 3.25 * px, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(150,154,160,0.42)'; g.lineWidth = 2; g.beginPath(); g.arc(512, 512, 3.25 * px, 0, Math.PI * 2); g.stroke();
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 128), new THREE.MeshBasicMaterial({ map: tex }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -0.005; studio.add(floor);
+  const stage = $('stage');
+  stage.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; dragX = e.clientX; stage.setPointerCapture(e.pointerId); });
+  stage.addEventListener('pointermove', e => { if (dragX === null) return; const d = (e.clientX - dragX) * 0.008; dragX = e.clientX; turn += d; turnVel = d * 30; });
+  const up = () => { dragX = null; };
+  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+}
+
+// the car (its visual group) moves between the showroom and the course
+function toStudio() {
+  studio.add(carRoot);
+  carRoot.position.set(0, 0, 0); carRoot.rotation.set(0, turn, 0);
+  vis.body.rotation.set(0, 0, 0);
+  for (const w of vis.wheels) w.steer.rotation.y = 0;
+  lampLevel = 0;
+  if (vis.lampMat) { vis.lampMat.emissiveIntensity = 0; vis.lampMat.opacity = 0.3; }
+  if (vis.lampOverlay) vis.lampOverlay.opacity = 0;
+  for (const sp of vis.glow) sp.material.opacity = 0;
+}
+function toCourse() { scene.add(carRoot); }
+
+function showroom(dt) {
+  if (carRoot.parent !== studio) toStudio();
+  // slow turn, carried on by a flick and settling back to the idle speed
+  turnVel += (0.22 - turnVel) * Math.min(1, dt * 1.5);
+  if (dragX === null) turn += turnVel * dt;
+  carRoot.rotation.set(0, turn, 0);
+  // frame the car in the stage area: the projection centre is moved onto the stage, and the
+  // distance is set so the car fills most of its width
+  const W = innerWidth, H = innerHeight, r = $('stage').getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height * 0.46;
+  studioCam.aspect = W / H;
+  const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(studioCam.fov) / 2) * studioCam.aspect);
+  const span = Math.max(0.2, Math.min(r.width * 0.86, r.height * 1.9) / W);
+  const dist = 5.0 / (2 * Math.tan(hf / 2) * span);
+  studioCam.position.set(0, dist * 0.27, dist);
+  studioCam.lookAt(0, 0.55, 0);
+  studioCam.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+  studioCam.updateProjectionMatrix();
+  renderer.render(studio, studioCam);
 }
 
 // ---------- screens ----------
@@ -506,7 +575,7 @@ async function loadCourse() {
 async function startDrive() {
   if (busy) return;
   busy = true; sound.start();
-  try { await loadCourse(); toGrid(); show('drive'); last = performance.now(); }
+  try { toCourse(); await loadCourse(); toGrid(); show('drive'); last = performance.now(); }
   catch (e) { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; }
   busy = false;
 }
@@ -522,6 +591,7 @@ input.onAction = a => {
   if (a === 'mute') sound.setMuted(!sound.muted);
   else if (state === 'select' && a === 'confirm') startDrive();
   else if (state === 'select' && (a === 'up' || a === 'down')) pick(sel + (a === 'up' ? -1 : 1));
+  else if (state === 'select' && (a === 'left' || a === 'right')) setCar(carIdx + (a === 'left' ? -1 : 1));
   else if (state === 'drive') {
     if (a === 'reset') toGrid();
     else if (a === 'camera') camMode = (camMode + 1) % 2;
@@ -537,6 +607,8 @@ $('btn-courses').addEventListener('click', openSelect);
 $('btn-pause').addEventListener('click', openResult);
 $('opt-assist').addEventListener('click', () => setAssist((assistIdx + 1) % ASSISTS.length));
 $('opt-car').addEventListener('click', () => setCar(carIdx + 1));
+$('car-prev').addEventListener('click', () => setCar(carIdx - 1));
+$('car-next').addEventListener('click', () => setCar(carIdx + 1));
 addEventListener('resize', resize);
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'drive') openResult(); });
 
@@ -547,6 +619,7 @@ async function boot() {
   setLoad(0.05, 'LOADING');
   buildWorld();
   carRoot = new THREE.Group(); carRoot.rotation.order = 'YXZ'; scene.add(carRoot);
+  buildStudio();
   smoke = new Smoke(scene); skids = [new Skid(scene), new Skid(scene)];
   tracks = await Promise.all(COURSES.map(d => Track.load(d)));
   sel = Math.min(tracks.length - 1, +(localStorage.getItem('slipangle.course') || 0));
@@ -556,7 +629,7 @@ async function boot() {
   $('loading').hidden = true;
   openSelect();
   requestAnimationFrame(frame);
-  window.__game = { car, input, sound, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
+  window.__game = { car, input, sound, camera, get wallFlash() { return wallFlash; }, get vis() { return vis; }, get track() { return track; }, get timing() { return timing; }, get state() { return state; }, pick, setCar };
 }
 
 boot().catch(e => { console.error(e); $('load-msg').textContent = '読み込みに失敗しました: ' + e.message; });
