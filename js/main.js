@@ -16,10 +16,10 @@ const COURSES = ['assets/ahvenisto', 'assets/lider', 'assets/driftpark'];
 // lamp: brake-lamp position in metres (left, up, forward); lens / cutout: material name patterns
 const CARS = [
   { id: 'supra', name: 'GR SUPRA DRIFT', spec: SUPRA, file: 'assets/car_supra.glb', engine: 'assets/engine/supra',
-    scale: 1, yaw: 0, lift: 0, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /lighglass/i, lamp: [0.525, 0.71, -2.06],
+    scale: 1, yaw: 0, lift: 0, wheels: ['FL', 'FR', 'RL', 'RR'], body: 'BODY', lens: /lighglass/i, lamp: [0.525, 0.71, -2.06], lean: 0.32,
     credit: '"2019 Toyota GR Supra Drift by HKS" by SIU Car Garage, CC BY-NC 4.0 / Engine: "6 cyl vintage racecar" by ears68 (Freesound 185151)' },
   { id: 'rx7', name: 'RX-7 GT300', spec: RX7, file: 'assets/car_rx7.glb', engine: 'assets/engine/rx7',
-    scale: 0.2675, yaw: Math.PI / 2, lift: 0.022, wheels: ['rx7_fl_1', 'rx7_fr_2', 'rx7_rl_4', 'rx7_rr_3'], body: 'rx7_body_0', cutout: /^Rim/, lamp: [0.5, 0.74, -2.12],
+    scale: 0.2675, yaw: Math.PI / 2, lift: 0.022, wheels: ['rx7_fl_1', 'rx7_fr_2', 'rx7_rl_4', 'rx7_rr_3'], body: 'rx7_body_0', cutout: /^Rim/, caliper: /^Brembo/, lampTexture: true, lamp: [0.5, 0.74, -2.12], lean: 0.22,
     credit: '"2006 Mazda RX-7 GT300 RE Amemiya" by Dave Bored SketchFab, CC BY 4.0 / Engine: "rotary engine" by fuser10 (Freesound 100791)' },
 ];
 const ASSISTS = [['弱', 0.92, 1], ['強', 1.0, 1], ['オフ', 0, 0]];   // label, countersteer follow, wheelspin aid
@@ -39,7 +39,8 @@ let tracks = [], timings = [], sel = 0, loaded = -1, courseGroup = null, plain =
 let track, timing, smoke, skids, carRoot, vis = null, carIdx = 0, lampLevel = 0;
 let state = 'loading', camMode = 0, camYaw = 0, hint = -1, acc = 0, last = 0, wallFlash = 0;
 let assistIdx = +(localStorage.getItem('slipangle.assist') || 0) % ASSISTS.length;
-const loc = {}, pose = { y: 0, pitch: 0, roll: 0, ready: false };
+const loc = {}, pose = { y: 0, pitch: 0, roll: 0, ready: false }, spinShown = [0, 0];
+const prev = { x: 0, z: 0, psi: 0 };
 const wheelWorld = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
 const SKY_TOP = 0x6d8fb3, SKY_HORIZON = 0xc8d3da;
 
@@ -127,6 +128,45 @@ function buildTrackProps() {
   line.frustumCulled = false; courseGroup.add(line);
 }
 
+// Red, rear-facing faces of a body whose lamps are painted into its texture. Returns a geometry
+// (in the body's space) made of copies of those faces, and the centre of each side's lamps.
+function lampFaces(body) {
+  body.updateMatrixWorld(true);
+  const all = new THREE.Box3().setFromObject(body), rearLimit = all.min.z + (all.max.z - all.min.z) * 0.1;
+  const pixels = new Map(), pos = [], spots = [[0, 0, 0, 0], [0, 0, 0, 0]];
+  const inv = new THREE.Matrix4().copy(body.matrixWorld).invert();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  body.traverse(o => {
+    if (!o.isMesh || !o.material.map || !o.material.map.image) return;
+    const img = o.material.map.image;
+    if (!pixels.has(img)) {
+      const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+      const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+      pixels.set(img, { d: g.getImageData(0, 0, cv.width, cv.height).data, w: cv.width, h: cv.height });
+    }
+    const px = pixels.get(img), g = o.geometry, P = g.attributes.position, UV = g.attributes.uv;
+    if (!UV) return;
+    const count = g.index ? g.index.count : P.count, at = k => (g.index ? g.index.getX(k) : k);
+    for (let t = 0; t < count; t += 3) {
+      const i0 = at(t), i1 = at(t + 1), i2 = at(t + 2);
+      a.fromBufferAttribute(P, i0).applyMatrix4(o.matrixWorld); b.fromBufferAttribute(P, i1).applyMatrix4(o.matrixWorld); c.fromBufferAttribute(P, i2).applyMatrix4(o.matrixWorld);
+      if ((a.z + b.z + c.z) / 3 > rearLimit) continue;
+      n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
+      if (Math.abs(n.z) < 0.3) continue;
+      const u = (UV.getX(i0) + UV.getX(i1) + UV.getX(i2)) / 3, v = (UV.getY(i0) + UV.getY(i1) + UV.getY(i2)) / 3;
+      const x = Math.min(px.w - 1, Math.floor((((u % 1) + 1) % 1) * px.w)), y = Math.min(px.h - 1, Math.floor((((v % 1) + 1) % 1) * px.h));
+      const k = (y * px.w + x) * 4, r = px.d[k], gg = px.d[k + 1], bl = px.d[k + 2];
+      if (r < 35 || gg > r * 0.5 || bl > r * 0.25) continue;      // red only: the amber indicators stay dark
+      for (const p of [a, b, c]) { p.applyMatrix4(inv); pos.push(p.x, p.y, p.z); }
+      const sp = spots[(a.x + b.x + c.x) > 0 ? 0 : 1];
+      sp[0] += (a.x + b.x + c.x) / 3; sp[1] += (a.y + b.y + c.y) / 3; sp[2] += (a.z + b.z + c.z) / 3; sp[3]++;
+    }
+  });
+  if (pos.length < 9 * 4) return null;
+  const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return { geometry, spots: spots.filter(s => s[3]).map(s => [s[0] / s[3], s[1] / s[3], s[2] / s[3]]) };
+}
+
 // one visual per car: the model wrapped so that it faces +Z at real size, with a pivot at each
 // wheel centre (steer + spin) and one under the body (lean on the springs)
 function buildCar(cfg, gltf) {
@@ -137,9 +177,28 @@ function buildCar(cfg, gltf) {
   const by = n => gltf.scene.getObjectByName(n);
   const box = new THREE.Box3();
   const wheels = cfg.wheels.map(n => {
-    const node = by(n), pivot = new THREE.Group(); pivot.rotation.order = 'YXZ';
-    box.setFromObject(node).getCenter(pivot.position);
-    root.add(pivot); pivot.attach(node); return pivot;
+    const node = by(n);
+    // the tyre is the largest mesh of the wheel and its thinnest dimension is the axle. The wheel must
+    // spin about that axle: the front wheels carry camber, and spinning them about the car's own
+    // sideways axis makes them wobble
+    let tyre = null, best = -1;
+    node.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.computeBoundingBox();
+      const d = o.geometry.boundingBox.getSize(new THREE.Vector3()).length() * o.matrixWorld.getMaxScaleOnAxis();
+      if (d > best) { best = d; tyre = o; }
+    });
+    const bb = tyre.geometry.boundingBox, size = bb.getSize(new THREE.Vector3());
+    const centre = bb.getCenter(new THREE.Vector3()).applyMatrix4(tyre.matrixWorld);
+    const axle = size.x <= size.y && size.x <= size.z ? new THREE.Vector3(1, 0, 0) : size.y <= size.z ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+    axle.transformDirection(tyre.matrixWorld);
+    if (axle.x < 0) axle.negate();
+    const steer = new THREE.Group(); steer.position.copy(centre); root.add(steer);
+    const spin = new THREE.Group(); steer.add(spin); spin.attach(node);
+    const still = [];
+    if (cfg.caliper) node.traverse(o => { if (o.isMesh && cfg.caliper.test(o.material.name)) still.push(o); });
+    for (const o of still) steer.attach(o);
+    return { steer, spin, axle };
   });
   const body = new THREE.Group(); root.add(body); body.attach(by(cfg.body));
   gltf.scene.traverse(o => {
@@ -172,15 +231,29 @@ function buildCar(cfg, gltf) {
     rm.position.copy(lens.position); rm.quaternion.copy(lens.quaternion); rm.scale.copy(lens.scale);
     lens.parent.add(rm);
   }
+  // models without a lens mesh: find the red, rear-facing faces of the body texture (the lamp lenses)
+  // and lay a copy of them over the body that lights up
+  let lampOverlay = null, lampSpots = null;
+  if (cfg.lampTexture) {
+    const found = lampFaces(body);
+    if (found) {
+      lampOverlay = new THREE.MeshBasicMaterial({ color: 0xff2410, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, fog: false });
+      const m = new THREE.Mesh(found.geometry, lampOverlay); m.frustumCulled = false; m.renderOrder = 5; body.add(m);
+      lampSpots = found.spots;
+    }
+  }
   const gc = document.createElement('canvas'); gc.width = 128; gc.height = 64;
   const gg = gc.getContext('2d'), rad = gg.createRadialGradient(64, 32, 2, 64, 32, 64);
   rad.addColorStop(0, 'rgba(255,120,90,1)'); rad.addColorStop(0.25, 'rgba(255,30,10,0.75)'); rad.addColorStop(1, 'rgba(255,0,0,0)');
   gg.setTransform(1, 0, 0, 0.5, 0, 16); gg.fillStyle = rad; gg.fillRect(0, -32, 128, 128);
   const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
   const [gx, gy, gz] = cfg.lamp;
-  const glow = [gx, -gx].map(x => {
+  const spots = lampSpots || [[gx, gy, gz], [-gx, gy, gz]];
+  const glow = spots.map(([x, y, z]) => {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
-    sp.position.set(x, gy, gz); sp.scale.set(0.78, 0.34, 1); sp.renderOrder = 6; body.add(sp); return sp;
+    sp.position.set(x, y, z - 0.04);
+    if (lampSpots) sp.scale.set(0.42, 0.24, 1); else sp.scale.set(0.78, 0.34, 1);
+    sp.renderOrder = 6; body.add(sp); return sp;
   });
   // soft contact shadow
   const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -191,7 +264,7 @@ function buildCar(cfg, gltf) {
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry(size.x + 0.85, size.z + 1.4), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.04; shadow.renderOrder = 1; root.add(shadow);
   root.visible = false; carRoot.add(root);
-  return { root, wheels, body, lampMat, glow };
+  return { root, wheels, body, lampMat, lampOverlay, glow, lean: cfg.lean };
 }
 
 // switch to a car: physics, visual, engine sound, records and the HUD's rev counter
@@ -238,16 +311,29 @@ function poseCar(dt) {
   const y = (h[0] + h[1] + h[2] + h[3]) / 4;
   const pitch = Math.atan2((h[0] + h[1] - h[2] - h[3]) / 2, car.p.a + car.p.b);
   const roll = Math.atan2((h[0] + h[2] - h[1] - h[3]) / 2, (car.p.trackF + car.p.trackR) / 2);
-  const k = pose.ready ? 1 - Math.exp(-dt / 0.06) : 1; pose.ready = true;
-  pose.y += (y - pose.y) * k; pose.pitch += (pitch - pose.pitch) * k; pose.roll += (roll - pose.roll) * k;
+  // height follows the ground closely; attitude is smoothed more so scan noise in the ground does not rock the car
+  const k = pose.ready ? 1 - Math.exp(-dt / 0.05) : 1, ka = pose.ready ? 1 - Math.exp(-dt / 0.14) : 1; pose.ready = true;
+  pose.y += (y - pose.y) * k; pose.pitch += (pitch - pose.pitch) * ka; pose.roll += (roll - pose.roll) * ka;
   carRoot.position.set(car.x, pose.y, car.z);
   carRoot.rotation.set(-pose.pitch, car.psi, pose.roll);
   // body leans on its springs
-  vis.body.rotation.set(clamp(-car.axF * 0.0045, -0.05, 0.05), 0, clamp(car.ayF * 0.006, -0.075, 0.075));
+  const lean = vis.lean;
+  vis.body.rotation.set(clamp(-car.axF * 0.0045 * lean, -0.05 * lean, 0.05 * lean), 0, clamp(car.ayF * 0.006 * lean, -0.075 * lean, 0.075 * lean));
   lampLevel += ((car.brake > 0.04 ? 1 : 0) - lampLevel) * Math.min(1, dt * 30 + (dt === 0 ? 1 : 0));
   if (vis.lampMat) { vis.lampMat.emissiveIntensity = lampLevel * 5; vis.lampMat.opacity = 0.3 + 0.65 * lampLevel; }
-  for (const sp of vis.glow) sp.material.opacity = lampLevel * (vis.lampMat ? 0.6 : 0.95);
-  for (let i = 0; i < 4; i++) vis.wheels[i].rotation.set(car.spin[i < 2 ? 0 : 1], i < 2 ? car.steer : 0, 0);
+  if (vis.lampOverlay) vis.lampOverlay.opacity = lampLevel * 0.95;
+  for (const sp of vis.glow) sp.material.opacity = lampLevel * (vis.lampMat ? 0.6 : vis.lampOverlay ? 0.32 : 0.95);
+  // the shown spin follows wheel speed frame by frame (smooth whatever the physics step count), and is
+  // capped per frame so fast spokes roll forward instead of strobing
+  if (dt > 0) {
+    const rate = [car.u / car.p.wheelRadius, car.omega];
+    for (let k = 0; k < 2; k++) spinShown[k] += clamp(rate[k] * dt, -0.42, 0.42);
+  }
+  for (let i = 0; i < 4; i++) {
+    const w = vis.wheels[i];
+    w.steer.rotation.y = i < 2 ? car.steer : 0;
+    w.spin.quaternion.setFromAxisAngle(w.axle, spinShown[i < 2 ? 0 : 1]);
+  }
 }
 
 function sampleGround() {
@@ -291,6 +377,7 @@ function relPos() {
 function toGrid() {
   const g = track.gridPose();
   car.reset(g.x, g.z, g.psi); hint = g.i; camYaw = g.psi; pose.ready = false;
+  prev.x = car.x; prev.z = car.z; prev.psi = car.psi;
   timing.reset(); acc = 0;
   for (const s of skids) s.has = false;
   track.locate(car.x, car.z, hint, loc);
@@ -361,8 +448,12 @@ function frame(now) {
   if (state !== 'drive') { sound.update(car.rpm, 0, 0, 0, 0, false); return; }
   const inp = input.read();
   acc += dt;
-  while (acc >= PHYS_DT) { physics(PHYS_DT, inp); acc -= PHYS_DT; }
+  while (acc >= PHYS_DT) { prev.x = car.x; prev.z = car.z; prev.psi = car.psi; physics(PHYS_DT, inp); acc -= PHYS_DT; }
+  // draw the car between the last two physics steps, so motion is even at any display rate
+  const px = car.x, pz = car.z, pp = car.psi, f = acc / PHYS_DT;
+  car.x = prev.x + (px - prev.x) * f; car.z = prev.z + (pz - prev.z) * f; car.psi = prev.psi + wrap(pp - prev.psi) * f;
   poseCar(dt); effects(dt); moveCamera(dt);
+  car.x = px; car.z = pz; car.psi = pp;
   smoke.setViewport(innerHeight * renderer.getPixelRatio(), camera.fov);
   hud.drive(dt, car, timing, track, inp);
   const rearSlide = clamp((Math.max(car.slip[2], car.slip[3]) - 1.2) / 3, 0, 1), frontSlide = clamp((Math.max(car.slip[0], car.slip[1]) - 1.2) / 2, 0, 1);
